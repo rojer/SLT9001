@@ -22,8 +22,9 @@
 #include "mgos_timers.hpp"
 
 #include "driver/periph_ctrl.h"
-#include "soc/rmt_reg.h"
 #include "soc/rmt_struct.h"
+
+#include "clk_rmt_channel.hpp"
 
 namespace clk {
 
@@ -51,22 +52,6 @@ static const uint8_t s_syms[16] = {
 int s_digits[] = {Q1_GPIO, Q2_GPIO, Q5_GPIO, Q3_GPIO, Q4_GPIO};
 int s_colors[] = {OE_R_GPIO, OE_G_GPIO, OE_B_GPIO};
 
-struct RMTChannel {
-  uint8_t ch;
-  uint8_t len;
-  union {
-    uint16_t data16[128];
-    uint32_t data32[64];
-  } data;
-  uint32_t conf1_stop, conf1_run;
-
-  void Configure(int gpio, bool idle_value);
-  void AddInsn(bool val, uint16_t num_cycles);
-  void CopyData();
-  void Start();
-  void Stop();
-};
-
 static RMTChannel rmt_chans[8] = {
     {.ch = 0, .len = 0, .data = {}, .conf1_stop = 0, .conf1_run = 0},
     {.ch = 1, .len = 0, .data = {}, .conf1_stop = 0, .conf1_run = 0},
@@ -79,50 +64,6 @@ static RMTChannel rmt_chans[8] = {
 };
 
 static RMTChannel *ser_ch, *srclk_ch, *rclk_ch;
-
-IRAM void RMTChannel::Configure(int gpio, bool idle_value) {
-  RMT.conf_ch[ch].conf0.val =
-      ((1 << RMT_MEM_SIZE_CH0_S) | (1 << RMT_DIV_CNT_CH0_S));
-  PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[gpio], 2);
-  gpio_set_direction((gpio_num_t) gpio, GPIO_MODE_OUTPUT);
-  gpio_matrix_out(gpio, RMT_SIG_OUT0_IDX + ch, 0, 0);
-  if (idle_value) {
-    conf1_stop = (RMT_IDLE_OUT_EN_CH0 | RMT_IDLE_OUT_LV_CH0 |
-                  RMT_REF_CNT_RST_CH0 | RMT_MEM_RD_RST_CH0);
-    conf1_run = (RMT_IDLE_OUT_EN_CH0 | RMT_IDLE_OUT_LV_CH0 | RMT_TX_START_CH0);
-  } else {
-    conf1_stop =
-        (RMT_IDLE_OUT_EN_CH0 | RMT_REF_CNT_RST_CH0 | RMT_MEM_RD_RST_CH0);
-    conf1_run = (RMT_IDLE_OUT_EN_CH0 | RMT_TX_START_CH0);
-  }
-  Stop();
-}
-
-IRAM void RMTChannel::AddInsn(bool val, uint16_t num_cycles) {
-  data.data16[len++] = (((uint16_t) val) << 15) | num_cycles;
-}
-
-IRAM void RMTChannel::CopyData() {
-  const uint32_t *src = data.data32;
-  uint32_t *dst = (uint32_t *) &RMTMEM.chan[ch].data32[0].val;
-  for (int num_words = len / 2; num_words > 0; num_words--) {
-    *dst++ = *src++;
-  }
-  if (len % 2 == 0) {
-    *dst = 0;
-  } else {
-    *dst = (*src & 0xffff);
-  }
-}
-
-IRAM void RMTChannel::Start() {
-  RMT.conf_ch[ch].conf1.val = conf1_run;
-}
-
-IRAM void RMTChannel::Stop() {
-  len = 0;
-  RMT.conf_ch[ch].conf1.val = conf1_stop;
-}
 
 static void GenDigitSeq2(uint8_t digit, uint16_t len, RMTChannel *ser,
                          RMTChannel *clk, RMTChannel *rclk) {
@@ -187,6 +128,9 @@ static void TimerCB(void *arg) {
 static mgos::ScopedTimer s_tmr(std::bind(TimerCB, nullptr));
 
 void InitRMT() {
+  periph_module_enable(PERIPH_RMT_MODULE);
+  RMT.apb_conf.fifo_mask = 1;
+  RMT.apb_conf.mem_tx_wrap_en = 0;
   ser_ch = &rmt_chans[SER_RMT_CH];
   ser_ch->Configure(SER_GPIO, 0);
   srclk_ch = &rmt_chans[SRCLK_RMT_CH];
@@ -205,11 +149,6 @@ bool InitApp() {
   mgos_gpio_setup_output(Q4_GPIO, 1);
   mgos_gpio_setup_output(Q5_GPIO, 0);
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
-
-  periph_module_enable(PERIPH_RMT_MODULE);
-
-  RMT.apb_conf.fifo_mask = 1;
-  RMT.apb_conf.mem_tx_wrap_en = 0;
 
   InitRMT();
 
