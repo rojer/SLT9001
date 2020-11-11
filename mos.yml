@@ -1,0 +1,49 @@
+author: 'Deomid "rojer" Ryabkov'
+description: LED clock firmware
+name: clock
+version: 0.1.0
+platform: esp32
+manifest_version: 2020-01-29
+
+libs_version: latest
+modules_version: latest
+mongoose_os_version: latest
+
+sources:
+  - src
+
+filesystem:
+  - fs
+
+config_schema:
+  # TODO
+
+cdefs:
+  SER_GPIO: 19
+  SER_RMT_CH: 0
+  SRCLK_GPIO: 21
+  SRCLK_RMT_CH: 1
+  RCLK_GPIO: 22
+  RCLK_RMT_CH: 2
+  # OE active 0
+  OE_R_GPIO: 23
+  OE_G_GPIO: 18
+  OE_B_GPIO: 5
+  # Q active 1
+  Q1_GPIO: 32
+  Q2_GPIO: 33
+  Q3_GPIO: 25
+  Q4_GPIO: 26
+  Q5_GPIO: 27
+
+libs:
+  - origin: https://github.com/mongoose-os-libs/core
+  - origin: https://github.com/mongoose-os-libs/rpc-service-config
+  - origin: https://github.com/mongoose-os-libs/rpc-service-fs
+  - origin: https://github.com/mongoose-os-libs/rpc-service-gpio
+  - origin: https://github.com/mongoose-os-libs/rpc-service-ota
+  - origin: https://github.com/mongoose-os-libs/rpc-uart
+  - origin: https://github.com/mongoose-os-libs/http-server
+  - origin: https://github.com/mongoose-os-libs/rpc-ws
+  - origin: https://github.com/mongoose-os-libs/sntp
+  - origin: https://github.com/mongoose-os-libs/wifi
