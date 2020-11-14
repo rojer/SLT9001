@@ -44,3 +44,9 @@ cdefs:
   Q3_GPIO: 25
   Q4_GPIO: 26
   Q5_GPIO: 27
+  # Buttons, active low
+  K1_GPIO: 39
+  K2_GPIO: 38
+  K3_GPIO: 37
+  # IR receiver
+  IR_GPIO: 36
