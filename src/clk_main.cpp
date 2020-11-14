@@ -23,14 +23,13 @@
 #include "mgos_timers.hpp"
 
 #include "driver/periph_ctrl.h"
+#include "rom/ets_sys.h"
 #include "soc/rmt_reg.h"
 #include "soc/rmt_struct.h"
 
 #include "clk_rmt_channel.hpp"
 
 namespace clk {
-
-static uint8_t s_symi = 0, s_cnt = 0;
 
 static const uint8_t s_syms[16] = {
     0x03,  // 0000 0011, "0"
@@ -54,220 +53,275 @@ static const uint8_t s_syms[16] = {
 int s_digits[] = {Q1_GPIO, Q2_GPIO, Q5_GPIO, Q3_GPIO, Q4_GPIO};
 int s_colors[] = {OE_R_GPIO, OE_G_GPIO, OE_B_GPIO};
 
-static RMTChannel rmt_chans[8] = {
-    RMTChannel(0), RMTChannel(1), RMTChannel(2), RMTChannel(3),
-    RMTChannel(4), RMTChannel(5), RMTChannel(6), RMTChannel(7),
+struct RMTChannelBank {
+  RMTChannelBank(int qa_pin, int qb_pin)
+      : ser(RMTChannel(0, SER_GPIO, 0)),
+        srclk(RMTChannel(1, SRCLK_GPIO, 0)),
+        rclk(RMTChannel(2, RCLK_GPIO, 0)),
+        r(RMTChannel(3, OE_R_GPIO, 1)),
+        g(RMTChannel(4, OE_G_GPIO, 1)),
+        b(RMTChannel(5, OE_B_GPIO, 1)),
+        qa(RMTChannel(6, qa_pin, 0)),
+        qb(RMTChannel(7, qb_pin, 0)) {
+  }
+
+  RMTChannel ser, srclk, rclk;
+  RMTChannel r, g, b;
+  RMTChannel qa, qb;
+
+  void GenDigitDataSeq(uint8_t digit, uint16_t len) {
+    rclk.Val(0, len * 16);
+    for (uint8_t mask = 1; mask != 0; mask <<= 1) {
+      // Set bit value in SER
+      ser.Val((digit & mask) != 0, len * 2);
+      // Latch into shift register
+      srclk.Off(len);
+      srclk.On(len);
+    }
+    // Latch shift -> storage register.
+    ser.Off(len);
+    srclk.Off(len);
+    rclk.On(len * 2);
+    ser.OffTo(rclk);
+    srclk.OffTo(rclk);
+    r.OffTo(rclk);
+    g.OffTo(rclk);
+    b.OffTo(rclk);
+    qa.OffTo(rclk);
+    qb.OffTo(rclk);
+  }
+
+  void GenDigitControlSeq(RMTChannel *qa, RMTChannel *qb, uint16_t rl,
+                          uint16_t gl, uint16_t bl) {
+    if (rl > 0) {  // 1.R Enable QA + R.
+      r.On(rl);
+      qa->On(rl);
+      // Idle channels
+      rclk.OffTo(r);
+      srclk.OffTo(r);
+      ser.OffTo(r);
+      // r
+      g.OffTo(r);
+      b.OffTo(r);
+      // qa
+      qb->OffTo(r);
+    }
+    if (gl > 0) {  // 1.G Disable R, enable G.
+      r.Off(gl);
+      g.On(gl);
+      qa->On(gl);
+      // Idle channels
+      rclk.OffTo(g);
+      srclk.OffTo(g);
+      ser.OffTo(g);
+      // r
+      // g
+      b.OffTo(g);
+      // qa
+      qb->OffTo(g);
+    }
+    if (bl > 0) {  // 1.B Disable G, enable B.
+      g.Off(bl);
+      b.On(bl);
+      qa->On(bl);
+      // Idle channels
+      rclk.OffTo(b);
+      srclk.OffTo(b);
+      ser.OffTo(b);
+      r.OffTo(b);
+      // g
+      // b
+      // qa
+      qb->OffTo(b);
+    }
+  }
+
+  void GenIdleSeq(uint16_t len) {
+    rclk.Off(len);
+    srclk.Off(len);
+    ser.Off(len);
+    r.Off(len);
+    g.Off(len);
+    b.Off(len);
+    qa.Off(len);
+    qb.Off(len);
+  }
+
+  void GenDigitA(uint8_t d, uint16_t rl, uint16_t gl, uint16_t bl) {
+    GenDigitDataSeq(d, 2);
+    GenDigitControlSeq(&qa, &qb, rl, gl, bl);
+  }
+
+  void GenDigitB(uint8_t d, uint16_t rl, uint16_t gl, uint16_t bl) {
+    GenDigitDataSeq(d, 2);
+    GenDigitControlSeq(&qb, &qa, rl, gl, bl);
+  }
+
+  void Setup() {
+    ser.Setup();
+    srclk.Setup();
+    rclk.Setup();
+    r.Setup();
+    g.Setup();
+    b.Setup();
+    qa.Setup();
+    qb.Setup();
+  }
+
+  void ClearData() {
+    ser.ClearData();
+    srclk.ClearData();
+    rclk.ClearData();
+    r.ClearData();
+    g.ClearData();
+    b.ClearData();
+    qa.ClearData();
+    qb.ClearData();
+  }
+
+  inline void Stop() {
+    rclk.Stop();
+    srclk.Stop();
+    ser.Stop();
+    r.Stop();
+    g.Stop();
+    b.Stop();
+    qa.Stop();
+    qb.Stop();
+  }
+
+  inline void LoadData() {
+    rclk.LoadData();
+    srclk.LoadData();
+    ser.LoadData();
+    r.LoadData();
+    g.LoadData();
+    b.LoadData();
+    qa.LoadData();
+    qb.LoadData();
+  }
+
+  inline void AttachQ() {
+    qa.Attach();
+    qb.Attach();
+  }
+
+  inline void DetachQ() {
+    qa.Detach();
+    qb.Detach();
+  }
 };
 
-static RMTChannel *ser, *srclk, *rclk;
-static RMTChannel *r, *g, *b;
-static RMTChannel *qa, *qb;
+struct RMTChannelBankSet {
+  RMTChannelBank banks[3];
+  int current;
 
-static void GenDigitSeq(uint8_t digit, uint16_t len) {
-  rclk->Val(0, len * 16);
-  for (uint8_t mask = 1; mask != 0; mask <<= 1) {
-    // Set bit value in SER
-    ser->Val((digit & mask) != 0, len * 2);
-    // Latch into shift register
-    srclk->Off(len);
-    srclk->On(len);
+  void Setup() {
+    for (int i = 0; i < 2; i++) {
+      // Detach from RMT for now.
+      banks[i].Setup();
+      banks[i].DetachQ();
+    }
   }
-  // Latch shift -> storage register.
-  ser->Off(len);
-  srclk->Off(len);
-  rclk->On(len * 2);
-  ser->OffTo(rclk);
-  srclk->OffTo(rclk);
+};
+
+// Two identical sets of channel banks are maintained:
+// the active one is used for display, when a change is needed it is made to the
+// inactive set and swapped out.
+static RMTChannelBankSet s_sets[2] = {
+    {.banks = {RMTChannelBank(Q1_GPIO, Q2_GPIO), RMTChannelBank(Q5_GPIO, -1),
+               RMTChannelBank(Q3_GPIO, Q4_GPIO)},
+     .current = 0},
+    {.banks = {RMTChannelBank(Q1_GPIO, Q2_GPIO), RMTChannelBank(Q5_GPIO, -1),
+               RMTChannelBank(Q3_GPIO, Q4_GPIO)},
+     .current = 0},
+};
+static bool s_switch_set = false;
+static int s_active_set = 0;
+
+// This is especially time critical: we must kick off all channels as close to
+// simultaneously as possible.
+IRAM void StartRMT() {
+  uint32_t sv1 = s_sets[0].banks[0].rclk.conf1_start;
+  uint32_t sv2 = s_sets[0].banks[0].r.conf1_start;
+  uint32_t rmt_reg_base = RMT_CH0CONF1_REG;
+  __asm__ __volatile__(
+      "rsil a8, 15\n"
+      "s32i.n  %[sv1], %[rrb], 0*8\n"
+      "s32i.n  %[sv1], %[rrb], 1*8\n"
+      "s32i.n  %[sv1], %[rrb], 2*8\n"
+      "s32i.n  %[sv2], %[rrb], 3*8\n"
+      "s32i.n  %[sv2], %[rrb], 4*8\n"
+      "s32i.n  %[sv2], %[rrb], 5*8\n"
+      "s32i.n  %[sv1], %[rrb], 6*8\n"
+      "s32i.n  %[sv1], %[rrb], 7*8\n"
+      "wsr.ps  a8\n"
+      : /* out */
+      : /* in */[ rrb ] "a"(rmt_reg_base), [ sv1 ] "a"(sv1), [ sv2 ] "a"(sv2)
+      : /* temp */ "a8", "memory");
 }
 
-uint16_t rl = 1000, gl = 1000, bl = 1000, dl = 2000;
+uint16_t rl = 100, gl = 100, bl = 70, dl = 100;
 
-IRAM void SendDigits(uint8_t digit1, uint8_t digit2) {
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].ClearData();
-  }
-#if 0  // Start calibration pattern
-  rmt_chans[0].On(10);
-  rmt_chans[0].Off(10);
-  rmt_chans[0].On(1);
-  rmt_chans[0].Off(1);
-  rmt_chans[0].On(5);
-  rmt_chans[0].Off(5);
-
-  rmt_chans[7].On(10);
-  rmt_chans[7].Off(10);
-  rmt_chans[7].On(1);
-  rmt_chans[7].Off(1);
-  rmt_chans[7].On(5);
-  rmt_chans[7].Off(5);
-#else
-  // Digit 1
-  {  // Clock out digit data
-    GenDigitSeq(digit1, 4);
-    r->OffTo(rclk);
-    g->OffTo(rclk);
-    b->OffTo(rclk);
-    qa->OffTo(rclk);
-    qb->OffTo(rclk);
-  }
-  if (rl > 0) {  // 1.R Enable QA + R.
-    r->On(rl);
-    qa->On(rl);
-    // Idle channels
-    rclk->OffTo(r);
-    srclk->OffTo(r);
-    ser->OffTo(r);
-    // r
-    g->OffTo(r);
-    b->OffTo(r);
-    // qa
-    qb->OffTo(r);
-  }
-  if (gl > 0) {  // 1.G Disable R, enable G.
-    r->Off(gl);
-    g->On(gl);
-    qa->On(gl);
-    // Idle channels
-    rclk->OffTo(g);
-    srclk->OffTo(g);
-    ser->OffTo(g);
-    // r
-    // g
-    b->OffTo(g);
-    // qa
-    qb->OffTo(g);
-  }
-  if (bl > 0) {  // 1.B Disable G, enable B.
-    g->Off(bl);
-    b->On(bl);
-    qa->On(bl);
-    // Idle channels
-    rclk->OffTo(b);
-    srclk->OffTo(b);
-    ser->OffTo(b);
-    r->OffTo(b);
-    // g
-    // b
-    // qa
-    qb->OffTo(b);
-  }
-  // Digit 2
-  {  // Clock out digit data
-    GenDigitSeq(digit2, 4);
-    r->OffTo(rclk);
-    g->OffTo(rclk);
-    b->OffTo(rclk);
-    qa->OffTo(rclk);
-    qb->OffTo(rclk);
-  }
-  if (rl > 0) {  // 2.R Enable QA + R.
-    r->On(rl);
-    qb->On(rl);
-    // Idle channels
-    rclk->OffTo(r);
-    srclk->OffTo(r);
-    ser->OffTo(r);
-    // r
-    g->OffTo(r);
-    b->OffTo(r);
-    qa->OffTo(r);
-    // qb
-  }
-  if (gl > 0) {  // 2.G Disable R, enable G.
-    r->Off(gl);
-    g->On(gl);
-    qb->On(gl);
-    // Idle channels
-    rclk->OffTo(g);
-    srclk->OffTo(g);
-    ser->OffTo(g);
-    // r
-    // g
-    b->OffTo(g);
-    qa->OffTo(g);
-    // qb
-  }
-  if (bl > 0) {  // 2.B Disable G, enable B.
-    g->Off(bl);
-    b->On(bl);
-    qb->On(bl);
-    // Idle channels
-    rclk->OffTo(b);
-    srclk->OffTo(b);
-    ser->OffTo(b);
-    r->OffTo(b);
-    // g
-    // b
-    qa->OffTo(b);
-    // qb
-  }
-  // Pause
-  if (dl > 0) {
-    rclk->Off(dl);
-    srclk->Off(dl);
-    ser->Off(dl);
-    r->Off(dl);
-    g->Off(dl);
-    b->Off(dl);
-    qa->Off(dl);
-    qb->Off(dl);
-  }
-#endif
-  // Time-critical part.
-  mgos_ints_disable();
-  // Make sure transition occurs when we are not loading the shift register.
-  int wait = 0;
-  const uint32_t int_mask =
-      (RMT_CH0_TX_END_INT_RAW);  // | RMT_CH1_TX_END_INT_RAW |
-                                 // RMT_CH2_TX_END_INT_RAW);
-  RMT.int_clr.val = int_mask;
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].Drain();
-  }
-  while (wait < 1000000) {
-    if ((RMT.int_raw.val & int_mask) == int_mask) {
-      RMT.conf_ch[0].conf1.tx_conti_mode = 0;
-      break;
+// Advance to the next bank in the active set.
+IRAM void RMTIntHandler(void *arg) {
+  RMTChannelBankSet *abs = &s_sets[s_active_set];
+  RMTChannelBank *old_bank = &abs->banks[abs->current];
+  abs->current++;
+  if (abs->current == ARRAY_SIZE(abs->banks)) {
+    if (s_switch_set) {
+      s_active_set ^= 1;
+      abs = &s_sets[s_active_set];
+      abs->current = 0;
+      s_switch_set = false;
+    } else {
+      abs->current = 0;
     }
-    wait++;
   }
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].Stop();
+  RMTChannelBank *new_bank = &abs->banks[abs->current];
+  new_bank->LoadData();
+  old_bank->DetachQ();
+  StartRMT();
+  new_bank->AttachQ();
+  RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
+  mgos_gpio_toggle(16);
+  (void) arg;
+}
+
+IRAM void SendDigits(uint8_t digits[5]) {
+  static bool s_started = false;
+
+  s_switch_set = false;
+  int inactive_set = (s_active_set ^ 1);
+  RMTChannelBankSet *ibs = &s_sets[inactive_set];
+  RMTChannelBank *ib0 = &ibs->banks[0];
+  ib0->ClearData();
+  ib0->GenDigitA(digits[0], rl, gl, bl);
+  ib0->GenDigitB(digits[1], rl, gl, bl);
+  RMTChannelBank *ib1 = &ibs->banks[1];
+  ib1->ClearData();
+  ib1->GenDigitA(digits[2], rl, gl, bl);
+  RMTChannelBank *ib2 = &ibs->banks[2];
+  ib2->ClearData();
+  ib2->GenDigitA(digits[3], rl, gl, bl);
+  ib2->GenDigitB(digits[4], rl, gl, bl);
+
+  if (dl > 0) {
+    ib2->GenIdleSeq(dl);
   }
-  uint32_t start_values[8];
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].CopyData();
-    start_values[i] = rmt_chans[i].conf1_start;
+
+  if (!s_started) {
+    RMTChannelBank *ab0 = &s_sets[inactive_set].banks[0];
+    ab0->LoadData();
+    s_active_set = inactive_set;
+    RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
+    RMT.int_ena.val = RMT_CH0_TX_END_INT_CLR;
+    StartRMT();
+    ab0->AttachQ();
+    s_started = true;
+  } else {
+    s_switch_set = true;
   }
-  // This is time critical, we must kick off all channels as close to
-  // simultaneously as possible
-#if 0
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].Start();
-  }
-#else
-  uint32_t sv = start_values[0];
-  uint32_t sv2 = start_values[3];
-  *((uint32_t *) RMT_CH0CONF1_REG) = sv;
-  *((uint32_t *) RMT_CH1CONF1_REG) = sv;
-  *((uint32_t *) RMT_CH2CONF1_REG) = sv;
-  *((uint32_t *) RMT_CH3CONF1_REG) = sv2;
-  *((uint32_t *) RMT_CH4CONF1_REG) = sv2;
-  *((uint32_t *) RMT_CH5CONF1_REG) = sv2;
-  *((uint32_t *) RMT_CH6CONF1_REG) = sv;
-  *((uint32_t *) RMT_CH7CONF1_REG) = sv;
-#endif
-  mgos_ints_enable();
-  LOG(LL_INFO,
-      ("%d %d %d | %d %d %d | %d %d | %#08x | wait %d %#08x", ser->tot_cycles,
-       srclk->tot_cycles, rclk->tot_cycles, r->tot_cycles, g->tot_cycles,
-       b->tot_cycles, qa->tot_cycles, qb->tot_cycles, RMT.int_raw.val, wait,
-       RMT.conf_ch[0].conf1.val));
-#if 0
-  for (int i = 0; i < 8; i++) {
-    rmt_chans[i].DumpData();
-  }
-#endif
 }
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
@@ -290,61 +344,36 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
 }
 
 static void TimerCB(void *arg) {
-  // s_symi=1;
-  s_symi++;
-  if (s_symi == 9) {
-    s_symi = 0;
-    s_cnt++;
-    if (s_cnt == 3) s_cnt = 0;
-  }
-  SendDigits(s_syms[2], s_syms[5]);
-  // SendDigits(s_syms[s_symi], s_syms[s_symi + 1]);
-  LOG(LL_INFO, ("Hello %2d 0x%02x", s_symi, s_syms[s_symi]));
+  char time_str[9];
+  mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
+  uint8_t s2 = (time_str[7] % 2 == 0 ? 0xff : 0b10101111);
+  uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
+                       s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
+  SendDigits(digits);
+  LOG(LL_INFO, ("%s", time_str));
   (void) arg;
 }
 
 static mgos::ScopedTimer s_tmr(std::bind(TimerCB, nullptr));
 
-void InitRMT() {
+bool InitApp() {
   periph_module_enable(PERIPH_RMT_MODULE);
   RMT.apb_conf.fifo_mask = 1;
   RMT.apb_conf.mem_tx_wrap_en = 0;
-  rclk = &rmt_chans[0];
-  rclk->Configure(RCLK_GPIO, 0);
-  srclk = &rmt_chans[1];
-  srclk->Configure(SRCLK_GPIO, 0);
-  ser = &rmt_chans[2];
-  ser->Configure(SER_GPIO, 0);
+  for (int i = 0; i < 2; i++) {
+    s_sets[i].Setup();
+  }
 
-  r = &rmt_chans[3];
-  r->Configure(OE_R_GPIO, 1);
-  g = &rmt_chans[4];
-  g->Configure(OE_G_GPIO, 1);
-  b = &rmt_chans[5];
-  b->Configure(OE_B_GPIO, 1);
+  mgos_gpio_setup_output(16, 0);
 
-  qa = &rmt_chans[6];
-  qa->Configure(Q1_GPIO, 0);
-  qb = &rmt_chans[7];
-  qb->Configure(Q2_GPIO, 0);
-}
-
-bool InitApp() {
-  mgos_gpio_setup_output(OE_R_GPIO, 1);
-  mgos_gpio_setup_output(OE_G_GPIO, 1);
-  mgos_gpio_setup_output(OE_B_GPIO, 1);
-  mgos_gpio_setup_output(Q1_GPIO, 1);
-  mgos_gpio_setup_output(Q2_GPIO, 1);
-  mgos_gpio_setup_output(Q3_GPIO, 0);
-  mgos_gpio_setup_output(Q4_GPIO, 0);
-  mgos_gpio_setup_output(Q5_GPIO, 0);
-  s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
-
-  InitRMT();
+  intr_handle_t inth;
+  esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, RMTIntHandler, nullptr, &inth);
+  esp_intr_set_in_iram(inth, true);
 
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
                      "{r: %d, g: %d, b: %d, d: %d}", SetColorHandler, nullptr);
 
+  s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;
 }
 
