@@ -116,7 +116,7 @@ void SendDigits(uint8_t digits[5]) {
     ib2->GenIdleSeq(dl);
   }
 
-  // ib0->Dump();
+  ib0->Dump();
 
   if (!s_started) {
     RMTChannelSet *ab0 = &s_sets[inactive_set].banks[0];

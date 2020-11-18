@@ -12,14 +12,14 @@
 namespace clk {
 
 RMTChannelSet::RMTChannelSet(int qa_pin, int qb_pin)
-    : ser_(RMTChannel(0, SER_GPIO, 0, false)),
-      srclk_(RMTChannel(1, SRCLK_GPIO, 0, false)),
-      rclk_(RMTChannel(2, RCLK_GPIO, 0, false)),
-      r_(RMTChannel(3, OE_R_GPIO, 1, false)),
-      g_(RMTChannel(4, OE_G_GPIO, 1, false)),
-      b_(RMTChannel(5, OE_B_GPIO, 1, false)),
-      qa_(RMTChannel(6, qa_pin, 0, false)),
-      qb_(RMTChannel(7, qb_pin, 0, false)) {
+    : ser_(RMTChannel(0, SER_GPIO, 1, 0, false)),
+      srclk_(RMTChannel(1, SRCLK_GPIO, 1, 0, false)),
+      rclk_(RMTChannel(2, RCLK_GPIO, 1, 0, false)),
+      r_(RMTChannel(3, OE_R_GPIO, 0, 1, false)),
+      g_(RMTChannel(4, OE_G_GPIO, 0, 1, false)),
+      b_(RMTChannel(5, OE_B_GPIO, 0, 1, false)),
+      qa_(RMTChannel(6, qa_pin, 1, 0, false)),
+      qb_(RMTChannel(7, qb_pin, 1, 0, false)) {
 }
 
 void RMTChannelSet::Init() {
@@ -119,9 +119,11 @@ void RMTChannelSet::Dump() {
   b_.Dump();
   qa_.Dump();
   qb_.Dump();
-  LOG(LL_INFO, ("%d %d %d | %d %d %d | %d %d", srclk_.tot_len_, ser_.tot_len_,
-                rclk_.tot_len_, r_.tot_len_, g_.tot_len_, b_.tot_len_,
-                qa_.tot_len_, qb_.tot_len_));
+  LOG(LL_INFO,
+      ("%d+%d %d+%d %d+%d | %d+%d %d+%d %d+%d | %d+%d %d+%d", srclk_.len_,
+       srclk_.tot_len_, ser_.len_, ser_.tot_len_, rclk_.len_, rclk_.tot_len_,
+       r_.len_, r_.tot_len_, g_.len_, g_.tot_len_, b_.len_, b_.tot_len_,
+       qa_.len_, qa_.tot_len_, qb_.len_, qb_.tot_len_));
 }
 
 void RMTChannelSet::GenDigitDataSeq(uint8_t digit, uint16_t len) {

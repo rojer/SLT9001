@@ -13,10 +13,13 @@
 
 namespace clk {
 
-#define LOOP 0
-
-RMTChannel::RMTChannel(uint8_t ch, int pin, bool idle_value, bool loop)
-    : ch_(ch), pin_(pin), idle_value_(idle_value), data_({}) {
+RMTChannel::RMTChannel(uint8_t ch, int pin, bool on_value, bool idle_value,
+                       bool loop)
+    : ch_(ch),
+      pin_(pin),
+      on_value_(on_value),
+      idle_value_(idle_value),
+      data_({}) {
   uint32_t conf1_common = (RMT_IDLE_OUT_EN_CH0 | RMT_REF_ALWAYS_ON_CH0 |
                            RMT_REF_CNT_RST_CH0 | RMT_MEM_RD_RST_CH0);
   if (idle_value_) {
@@ -41,28 +44,43 @@ void RMTChannel::Init() {
 
 IRAM void RMTChannel::Val(bool val, uint16_t num_cycles) {
   tot_len_ += num_cycles;
-  uint16_t v = (val ? !idle_value_ : idle_value_);
-  data_.data16[len_++] = ((v << 15) | num_cycles);
+  if (len_ > 0) {
+    Item *last = &data_.items[len_ - 1];
+    if (val == last->val) {
+      uint16_t avail = 0x7fff - last->num_cycles;
+      if (avail >= num_cycles) {
+        last->num_cycles += num_cycles;
+        return;
+      } else {
+        last->num_cycles = 0x7fff;
+        num_cycles -= avail;
+      }
+    }
+  }
+  Item *next = &data_.items[len_];
+  next->num_cycles = num_cycles;
+  next->val = val;
+  len_++;
 }
 
 IRAM void RMTChannel::On(uint16_t num_cycles) {
-  Val(true, num_cycles);
+  Val(on_value_, num_cycles);
 }
 
 IRAM void RMTChannel::Off(uint16_t num_cycles) {
-  Val(false, num_cycles);
+  Val(!on_value_, num_cycles);
 }
 
 IRAM void RMTChannel::OnTo(const RMTChannel &other) {
   uint16_t diff = other.tot_len_ - tot_len_;
   if (diff == 0) return;
-  Val(true, diff);
+  Val(on_value_, diff);
 }
 
 IRAM void RMTChannel::OffTo(const RMTChannel &other) {
   uint16_t diff = other.tot_len_ - tot_len_;
   if (diff == 0) return;
-  Val(false, diff);
+  Val(!on_value_, diff);
 }
 
 void RMTChannel::Clear() {
@@ -79,7 +97,6 @@ IRAM void RMTChannel::Upload() {
   if (len_ % 2 == 0) {
     *dst = (((uint32_t) idle_value_) << 15);
   } else {
-    //*dst = (*src & 0xffff);
     *dst = (*src & 0xffff) | (((uint32_t) idle_value_) << 31);
   }
 }
@@ -87,8 +104,6 @@ IRAM void RMTChannel::Upload() {
 void RMTChannel::Dump() {
   LOG(LL_INFO, ("ch %d pin %d len %d start %#08x stop %#08x", ch_, pin_, len_,
                 conf1_start_, conf1_stop_));
-  // mg_hexdumpf(stderr, (void *) &RMTMEM.chan[ch_].data32[0].val, len_ * 2 +
-  // 2);
   mg_hexdumpf(stderr, (void *) &data_, len_ * 2);
 }
 
