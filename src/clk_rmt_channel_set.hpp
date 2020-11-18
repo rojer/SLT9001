@@ -30,6 +30,8 @@ class RMTChannelSet {
   void AttachQ();
   void DetachQ();
 
+  void Dump();
+
  private:
   void GenDigitDataSeq(uint8_t digit, uint16_t len);
   void GenDigitControlSeq(RMTChannel *qa, RMTChannel *qb, uint16_t rl,

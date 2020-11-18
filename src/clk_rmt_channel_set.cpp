@@ -5,19 +5,21 @@
 
 #include "clk_rmt_channel_set.hpp"
 
+#include "mgos.h"
+
 #include "soc/rmt_reg.h"
 
 namespace clk {
 
 RMTChannelSet::RMTChannelSet(int qa_pin, int qb_pin)
-    : ser_(RMTChannel(0, SER_GPIO, 0)),
-      srclk_(RMTChannel(1, SRCLK_GPIO, 0)),
-      rclk_(RMTChannel(2, RCLK_GPIO, 0)),
-      r_(RMTChannel(3, OE_R_GPIO, 1)),
-      g_(RMTChannel(4, OE_G_GPIO, 1)),
-      b_(RMTChannel(5, OE_B_GPIO, 1)),
-      qa_(RMTChannel(6, qa_pin, 0)),
-      qb_(RMTChannel(7, qb_pin, 0)) {
+    : ser_(RMTChannel(0, SER_GPIO, 0, false)),
+      srclk_(RMTChannel(1, SRCLK_GPIO, 0, false)),
+      rclk_(RMTChannel(2, RCLK_GPIO, 0, false)),
+      r_(RMTChannel(3, OE_R_GPIO, 1, false)),
+      g_(RMTChannel(4, OE_G_GPIO, 1, false)),
+      b_(RMTChannel(5, OE_B_GPIO, 1, false)),
+      qa_(RMTChannel(6, qa_pin, 0, false)),
+      qb_(RMTChannel(7, qb_pin, 0, false)) {
 }
 
 void RMTChannelSet::Init() {
@@ -44,13 +46,13 @@ void RMTChannelSet::Clear() {
 
 void RMTChannelSet::GenDigitA(uint8_t d, uint16_t rl, uint16_t gl,
                               uint16_t bl) {
-  GenDigitDataSeq(d, 2);
+  GenDigitDataSeq(d, 1);
   GenDigitControlSeq(&qa_, &qb_, rl, gl, bl);
 }
 
 void RMTChannelSet::GenDigitB(uint8_t d, uint16_t rl, uint16_t gl,
                               uint16_t bl) {
-  GenDigitDataSeq(d, 2);
+  GenDigitDataSeq(d, 1);
   GenDigitControlSeq(&qb_, &qa_, rl, gl, bl);
 }
 
@@ -108,6 +110,20 @@ IRAM void RMTChannelSet::DetachQ() {
   qb_.DetachPin();
 }
 
+void RMTChannelSet::Dump() {
+  srclk_.Dump();
+  ser_.Dump();
+  rclk_.Dump();
+  r_.Dump();
+  g_.Dump();
+  b_.Dump();
+  qa_.Dump();
+  qb_.Dump();
+  LOG(LL_INFO, ("%d %d %d | %d %d %d | %d %d", srclk_.tot_len_, ser_.tot_len_,
+                rclk_.tot_len_, r_.tot_len_, g_.tot_len_, b_.tot_len_,
+                qa_.tot_len_, qb_.tot_len_));
+}
+
 void RMTChannelSet::GenDigitDataSeq(uint8_t digit, uint16_t len) {
   rclk_.Val(0, len * 16);
   for (uint8_t mask = 1; mask != 0; mask <<= 1) {
@@ -120,7 +136,7 @@ void RMTChannelSet::GenDigitDataSeq(uint8_t digit, uint16_t len) {
   // Latch shift -> storage register.
   ser_.Off(len);
   srclk_.Off(len);
-  rclk_.On(len * 2);
+  rclk_.On(len);
   ser_.OffTo(rclk_);
   srclk_.OffTo(rclk_);
   r_.OffTo(rclk_);
@@ -132,47 +148,28 @@ void RMTChannelSet::GenDigitDataSeq(uint8_t digit, uint16_t len) {
 
 void RMTChannelSet::GenDigitControlSeq(RMTChannel *qa, RMTChannel *qb,
                                        uint16_t rl, uint16_t gl, uint16_t bl) {
-  if (rl > 0) {  // 1.R Enable QA + R.
+  uint16_t max = 0;
+  if (rl > 0) {
     r_.On(rl);
-    qa->On(rl);
-    // Idle channels
-    rclk_.OffTo(r_);
-    srclk_.OffTo(r_);
-    ser_.OffTo(r_);
-    // r_
-    g_.OffTo(r_);
-    b_.OffTo(r_);
-    // qa
-    qb->OffTo(r_);
+    if (rl > max) max = rl;
   }
-  if (gl > 0) {  // 1.G Disable R, enable G.
-    r_.Off(gl);
+  if (gl > 0) {
     g_.On(gl);
-    qa->On(gl);
-    // Idle channels
-    rclk_.OffTo(g_);
-    srclk_.OffTo(g_);
-    ser_.OffTo(g_);
-    // r_
-    // g_
-    b_.OffTo(g_);
-    // qa
-    qb->OffTo(g_);
+    if (gl > max) max = gl;
   }
-  if (bl > 0) {  // 1.B Disable G, enable B.
-    g_.Off(bl);
+  if (bl > 0) {
     b_.On(bl);
-    qa->On(bl);
-    // Idle channels
-    rclk_.OffTo(b_);
-    srclk_.OffTo(b_);
-    ser_.OffTo(b_);
-    r_.OffTo(b_);
-    // g_
-    // b_
-    // qa
-    qb->OffTo(b_);
+    if (bl > max) max = bl;
   }
+  qa->On(max);
+  r_.OffTo(*qa);
+  g_.OffTo(*qa);
+  b_.OffTo(*qa);
+  // idle channels
+  rclk_.Off(max);
+  srclk_.Off(max);
+  ser_.Off(max);
+  qb->OffTo(*qa);
 }
 
 }  // namespace clk

@@ -13,7 +13,7 @@ namespace clk {
 
 class RMTChannel {
  public:
-  RMTChannel(uint8_t ch, int pin, bool idle_value);
+  RMTChannel(uint8_t ch, int pin, bool idle_value, bool loop);
   RMTChannel(const RMTChannel &other) = default;
 
   void Init();

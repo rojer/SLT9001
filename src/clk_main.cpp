@@ -65,10 +65,12 @@ static RMTChannelSetBank s_sets[2] = {
 static bool s_switch_set = false;
 static int s_active_set = 0;
 
-uint16_t rl = 100, gl = 100, bl = 70, dl = 100;
+static char time_str[9] = {'1', '1', ':', '1', '1', ':', '1', '1'};
+static uint16_t rl = 8, gl = 16, bl = 24, dl = 100;
 
 // Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
+  mgos_gpio_toggle(16);
   RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
   RMTChannelSetBank *abs = &s_sets[s_active_set];
   RMTChannelSet *old_bank = &abs->banks[abs->current];
@@ -114,6 +116,8 @@ void SendDigits(uint8_t digits[5]) {
     ib2->GenIdleSeq(dl);
   }
 
+  // ib0->Dump();
+
   if (!s_started) {
     RMTChannelSet *ab0 = &s_sets[inactive_set].banks[0];
     ab0->Upload();
@@ -130,8 +134,13 @@ void SendDigits(uint8_t digits[5]) {
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
+  char *s = NULL;
   int r = -1, g = -1, b = -1, d = -1;
-  json_scanf(args.p, args.len, ri->args_fmt, &r, &g, &b, &d);
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &r, &g, &b, &d);
+  if (s != nullptr) {
+    strncpy(time_str, s, sizeof(time_str) - 1);
+    free(s);
+  }
   if (r >= 0) {
     rl = r;
   }
@@ -148,8 +157,7 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
 }
 
 static void TimerCB(void *arg) {
-  char time_str[9];
-  mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
+  // mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
   uint8_t s2 = (time_str[7] % 2 == 0 ? 0xff : 0b10101111);
   uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
                        s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
@@ -175,7 +183,8 @@ bool InitApp() {
   esp_intr_set_in_iram(inth, true);
 
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
-                     "{r: %d, g: %d, b: %d, d: %d}", SetColorHandler, nullptr);
+                     "{s: %Q, r: %d, g: %d, b: %d, d: %d}", SetColorHandler,
+                     nullptr);
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;
