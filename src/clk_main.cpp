@@ -66,7 +66,8 @@ static bool s_switch_set = false;
 static int s_active_set = 0;
 
 static char time_str[9] = {'1', '1', ':', '1', '1', ':', '1', '1'};
-static uint16_t rl = 8, gl = 16, bl = 24, dl = 100;
+static uint16_t rl = 0, gl = 16, bl = 0, dl = 0;
+static bool s_show_time = false;
 
 // Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
@@ -138,7 +139,12 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   int r = -1, g = -1, b = -1, d = -1;
   json_scanf(args.p, args.len, ri->args_fmt, &s, &r, &g, &b, &d);
   if (s != nullptr) {
-    strncpy(time_str, s, sizeof(time_str) - 1);
+    if (strlen(s) != 0) {
+      s_show_time = false;
+      strncpy(time_str, s, sizeof(time_str) - 1);
+    } else {
+      s_show_time = true;
+    }
     free(s);
   }
   if (r >= 0) {
@@ -157,7 +163,9 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
 }
 
 static void TimerCB(void *arg) {
-  // mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
+  if (s_show_time) {
+    mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
+  }
   uint8_t s2 = (time_str[7] % 2 == 0 ? 0xff : 0b10101111);
   uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
                        s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};

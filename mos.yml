@@ -31,13 +31,11 @@ config_schema:
   - ["sntp.enable", true]
 
 cdefs:
-  RCLK_GPIO: 22
   SER_GPIO: 19
   SRCLK_GPIO: 21
-  # OE active 0
-  OE_R_GPIO: 23
-  OE_G_GPIO: 18
-  OE_B_GPIO: 5
+  RCLK_R_GPIO: 23
+  RCLK_G_GPIO: 18
+  RCLK_B_GPIO: 22
   # Q active 1
   Q1_GPIO: 32
   Q2_GPIO: 33

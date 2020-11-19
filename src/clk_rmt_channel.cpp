@@ -43,6 +43,7 @@ void RMTChannel::Init() {
 }
 
 IRAM void RMTChannel::Val(bool val, uint16_t num_cycles) {
+  if (num_cycles == 0) return;
   tot_len_ += num_cycles;
   if (len_ > 0) {
     Item *last = &data_.items[len_ - 1];
@@ -52,6 +53,9 @@ IRAM void RMTChannel::Val(bool val, uint16_t num_cycles) {
         last->num_cycles += num_cycles;
         return;
       } else {
+        LOG(LL_ERROR,
+            ("%d: overflow %d %d", ch_, last->num_cycles, num_cycles));
+        abort();
         last->num_cycles = 0x7fff;
         num_cycles -= avail;
       }

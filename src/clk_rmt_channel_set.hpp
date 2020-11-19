@@ -37,7 +37,7 @@ class RMTChannelSet {
   void GenDigitControlSeq(RMTChannel *qa, RMTChannel *qb, uint16_t rl,
                           uint16_t gl, uint16_t bl);
 
-  RMTChannel ser_, srclk_, rclk_;
+  RMTChannel srclk_, ser_;
   RMTChannel r_, g_, b_;
   RMTChannel qa_, qb_;
 };
