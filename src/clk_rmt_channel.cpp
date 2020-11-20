@@ -55,7 +55,6 @@ IRAM void RMTChannel::Val(bool val, uint16_t num_cycles) {
       } else {
         LOG(LL_ERROR,
             ("%d: overflow %d %d", ch_, last->num_cycles, num_cycles));
-        abort();
         last->num_cycles = 0x7fff;
         num_cycles -= avail;
       }

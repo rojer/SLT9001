@@ -55,28 +55,26 @@ struct RMTChannelSetBank {
 // the active one is used for display, when a change is needed it is made to the
 // inactive set and swapped out.
 static RMTChannelSetBank s_sets[2] = {
-    {.banks = {RMTChannelSet(Q1_GPIO, Q2_GPIO), RMTChannelSet(Q5_GPIO, -1),
-               RMTChannelSet(Q3_GPIO, Q4_GPIO)},
+    {.banks = {RMTChannelSet(), RMTChannelSet(), RMTChannelSet()},
      .current = 0},
-    {.banks = {RMTChannelSet(Q1_GPIO, Q2_GPIO), RMTChannelSet(Q5_GPIO, -1),
-               RMTChannelSet(Q3_GPIO, Q4_GPIO)},
+    {.banks = {RMTChannelSet(), RMTChannelSet(), RMTChannelSet()},
      .current = 0},
 };
 static bool s_switch_set = false;
 static int s_active_set = 0;
 
-static char time_str[9] = {'1', '1', ':', '1', '1', ':', '1', '1'};
-static uint16_t rl = 0, gl = 16, bl = 0, dl = 0;
+static char time_str[9] = {'1', '2', ':', '1', '1', ':', '1', '1'};
+static uint16_t rl = 0, gl = 18, bl = 0, dl = 5000;
 static bool s_show_time = false;
 
 // Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
-  mgos_gpio_toggle(16);
+  // mgos_gpio_toggle(16);
   RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
   RMTChannelSetBank *abs = &s_sets[s_active_set];
   RMTChannelSet *old_bank = &abs->banks[abs->current];
   abs->current++;
-  if (abs->current == ARRAY_SIZE(abs->banks)) {
+  if (abs->current == 1) {  // ARRAY_SIZE(abs->banks)) {
     if (s_switch_set) {
       s_active_set ^= 1;
       abs = &s_sets[s_active_set];
@@ -86,12 +84,12 @@ IRAM void RMTIntHandler(void *arg) {
       abs->current = 0;
     }
   }
-  old_bank->DetachQ();
+  // old_bank->DetachQ();
   RMTChannelSet *new_bank = &abs->banks[abs->current];
   new_bank->Upload();
   new_bank->Start();
-  new_bank->AttachQ();
-  mgos_gpio_toggle(16);
+  // new_bank->AttachQ();
+  // mgos_gpio_toggle(16);
   (void) arg;
 }
 
@@ -103,19 +101,12 @@ void SendDigits(uint8_t digits[5]) {
   RMTChannelSetBank *ibs = &s_sets[inactive_set];
   RMTChannelSet *ib0 = &ibs->banks[0];
   ib0->Clear();
-  ib0->GenDigitA(digits[0], rl, gl, bl);
-  ib0->GenDigitB(digits[1], rl, gl, bl);
-  RMTChannelSet *ib1 = &ibs->banks[1];
-  ib1->Clear();
-  ib1->GenDigitA(digits[2], rl, gl, bl);
-  RMTChannelSet *ib2 = &ibs->banks[2];
-  ib2->Clear();
-  ib2->GenDigitA(digits[3], rl, gl, bl);
-  ib2->GenDigitB(digits[4], rl, gl, bl);
-
-  if (dl > 0) {
-    ib2->GenIdleSeq(dl);
-  }
+  ib0->GenDigit(1, digits[0], 1, rl, gl, bl);
+  ib0->GenIdleSeq(dl);
+  ib0->GenDigit(2, digits[1], 1, rl, gl, bl);
+  ib0->GenIdleSeq(dl);
+  ib0->GenDigit(5, digits[2], 1, rl, gl, bl);
+  ib0->GenIdleSeq(dl);
 
   ib0->Dump();
 
@@ -166,7 +157,8 @@ static void TimerCB(void *arg) {
   if (s_show_time) {
     mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
   }
-  uint8_t s2 = (time_str[7] % 2 == 0 ? 0xff : 0b10101111);
+  uint8_t s2 =
+      (time_str[7] % 2 == 0 ? RMTChannelSet::kDigitValueEmpty : 0b10101111);
   uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
                        s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
   SendDigits(digits);
@@ -184,7 +176,7 @@ bool InitApp() {
     s_sets[i].Init();
   }
 
-  mgos_gpio_setup_output(16, 0);
+  // mgos_gpio_setup_output(16, 0);
 
   intr_handle_t inth;
   esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, RMTIntHandler, nullptr, &inth);
