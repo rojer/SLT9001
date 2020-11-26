@@ -57,7 +57,7 @@ static RMTChannelSet s_sets[2] = {RMTChannelSet(), RMTChannelSet()};
 static bool s_switch_set = false;
 static int s_active_set = 0;
 
-static char time_str[9] = {'2', '5', ':', '1', '2', ':', '1', '1'};
+static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
 static uint16_t rl = 1000, gl = 1000, bl = 0, dl = 1000;
 static bool s_show_time = true;
 

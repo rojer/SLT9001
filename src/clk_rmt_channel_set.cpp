@@ -95,15 +95,18 @@ void RMTChannelSet::GenDigitSeq(uint8_t qn, uint8_t d, uint16_t len,
   ser_.OffTo(rclk_);
   qser_.OffTo(rclk_);
   // Idle sequence.
-  if (dl > 0) {
-    srclk_.Off(dl);
-    ser_.Off(dl);
-    qser_.Off(dl);
-    rclk_.Off(dl);
-    r_.Off(dl);
-    g_.Off(dl);
-    b_.Off(dl);
-  }
+  GenIdleSeq(dl);
+}
+
+void RMTChannelSet::GenIdleSeq(uint16_t dl) {
+  if (dl == 0) return;
+  srclk_.Off(dl);
+  ser_.Off(dl);
+  qser_.Off(dl);
+  rclk_.Off(dl);
+  r_.Off(dl);
+  g_.Off(dl);
+  b_.Off(dl);
 }
 
 IRAM void RMTChannelSet::Upload() {
