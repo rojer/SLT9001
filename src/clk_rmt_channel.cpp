@@ -14,7 +14,7 @@
 namespace clk {
 
 RMTChannel::RMTChannel(uint8_t ch, int pin, bool on_value, bool idle_value,
-                       bool loop)
+                       bool loop, uint16_t carrier_high, uint16_t carrier_low)
     : ch_(ch),
       pin_(pin),
       on_value_(on_value),
@@ -30,12 +30,18 @@ RMTChannel::RMTChannel(uint8_t ch, int pin, bool on_value, bool idle_value,
   }
   conf1_stop_ = conf1_common;
   conf1_start_ = (conf1_common | RMT_TX_START_CH0);
+  carrier_duty_reg_ = ((((uint32_t) carrier_high) << 16) | carrier_low);
+  conf0_reg_ = ((1 << RMT_MEM_SIZE_CH0_S) | (80 << RMT_DIV_CNT_CH0_S));
+  if (carrier_high > 0 && carrier_low > 0) {
+    conf0_reg_ |= RMT_CARRIER_EN_CH0;
+    if (on_value_) conf0_reg_ |= RMT_CARRIER_OUT_LV_CH0;
+  }
 }
 
 void RMTChannel::Init() {
   if (pin_ < 0) return;
-  RMT.conf_ch[ch_].conf0.val =
-      ((1 << RMT_MEM_SIZE_CH0_S) | (80 << RMT_DIV_CNT_CH0_S));
+  RMT.conf_ch[ch_].conf0.val = conf0_reg_;
+  RMT.carrier_duty_ch[ch_].val = carrier_duty_reg_;
   PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_], 2);
   gpio_set_direction((gpio_num_t) pin_, GPIO_MODE_OUTPUT);
   Stop();
@@ -74,6 +80,10 @@ IRAM void RMTChannel::Off(uint16_t num_cycles) {
   Val(!on_value_, num_cycles);
 }
 
+IRAM void RMTChannel::Set(bool on, uint16_t num_cycles) {
+  Val((on ? on_value_ : !on_value_), num_cycles);
+}
+
 IRAM void RMTChannel::OnTo(const RMTChannel &other) {
   uint16_t diff = other.tot_len_ - tot_len_;
   if (diff == 0) return;
@@ -105,8 +115,10 @@ IRAM void RMTChannel::Upload() {
 }
 
 void RMTChannel::Dump() {
-  LOG(LL_INFO, ("ch %d pin %d len %d start %#08x stop %#08x", ch_, pin_, len_,
-                conf1_start_, conf1_stop_));
+  LOG(LL_INFO, ("ch %d pin %d n %d tot_len %d conf0 %#08x carr %#08x start "
+                "%#08x stop %#08x",
+                ch_, pin_, len_, tot_len_, RMT.conf_ch[ch_].conf0.val,
+                RMT.carrier_duty_ch[ch_].val, conf1_start_, conf1_stop_));
   mg_hexdumpf(stderr, (void *) &data_, len_ * 2);
 }
 

@@ -13,7 +13,9 @@ namespace clk {
 
 class RMTChannel {
  public:
-  RMTChannel(uint8_t ch, int pin, bool on_value, bool idle_value, bool loop);
+  RMTChannel(uint8_t ch, int pin, bool on_value, bool idle_value,
+             bool loop = false, uint16_t carrier_high = 0,
+             uint16_t carrier_low = 0);
   RMTChannel(const RMTChannel &other) = default;
 
   void Init();
@@ -22,9 +24,9 @@ class RMTChannel {
   void Clear();
   void On(uint16_t num_cycles);
   void Off(uint16_t num_cycles);
+  void Set(bool on, uint16_t num_cycles);
   void OnTo(const RMTChannel &other);
   void OffTo(const RMTChannel &other);
-  void Val(bool val, uint16_t num_cycles);
 
   // Upload the sequence from memory to the peripheral.
   void Upload();
@@ -41,12 +43,16 @@ class RMTChannel {
   void Dump();
 
  private:
+  void Val(bool val, uint16_t num_cycles);
+
   uint8_t ch_;
   int pin_;
   bool on_value_;
   bool idle_value_;
   uint32_t len_ = 0;
   uint32_t tot_len_ = 0;
+  uint32_t conf0_reg_ = 0;
+  uint32_t carrier_duty_reg_ = 0;
   uint32_t conf1_start_ = 0;
   uint32_t conf1_stop_ = 0;
   struct Item {

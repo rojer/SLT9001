@@ -21,22 +21,17 @@ class RMTChannelSet {
   // Data generation functions.
   void Clear();
   static constexpr uint8_t kDigitValueEmpty = 0xff;
-  void GenDigit(uint8_t qn, uint8_t d, uint16_t len, uint16_t rl, uint16_t gl,
-                uint16_t bl);
-  void GenIdleSeq(uint16_t len);
+  void GenDigitSeq(uint8_t qn, uint8_t d, uint16_t len, uint16_t rl,
+                   uint16_t gl, uint16_t bl, uint16_t dl);
 
   void Upload();
   void Start();
 
-  void AttachQ();
-  void DetachQ();
-
   void Dump();
 
  private:
-  RMTChannel srclk_, ser_, qser_;
+  RMTChannel srclk_, ser_, qser_, rclk_;
   RMTChannel r_, g_, b_;
-  RMTChannel q_;
 };
 
 }  // namespace clk

@@ -44,9 +44,7 @@ struct RMTChannelSetBank {
 
   void Init() {
     for (int i = 0; i < 3; i++) {
-      // Detach from RMT for now.
       banks[i].Init();
-      banks[i].DetachQ();
     }
   }
 };
@@ -54,42 +52,27 @@ struct RMTChannelSetBank {
 // Two identical banks of channel sets are maintained:
 // the active one is used for display, when a change is needed it is made to the
 // inactive set and swapped out.
-static RMTChannelSetBank s_sets[2] = {
-    {.banks = {RMTChannelSet(), RMTChannelSet(), RMTChannelSet()},
-     .current = 0},
-    {.banks = {RMTChannelSet(), RMTChannelSet(), RMTChannelSet()},
-     .current = 0},
-};
+static RMTChannelSet s_sets[2] = {RMTChannelSet(), RMTChannelSet()};
 static bool s_switch_set = false;
 static int s_active_set = 0;
 
-static char time_str[9] = {'1', '2', ':', '1', '1', ':', '1', '1'};
-static uint16_t rl = 0, gl = 18, bl = 0, dl = 5000;
-static bool s_show_time = false;
+static char time_str[9] = {'2', '5', ':', '1', '2', ':', '1', '1'};
+static uint16_t rl = 1000, gl = 1000, bl = 0, dl = 1000;
+static bool s_show_time = true;
 
 // Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
-  // mgos_gpio_toggle(16);
+  mgos_gpio_toggle(16);
   RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
-  RMTChannelSetBank *abs = &s_sets[s_active_set];
-  RMTChannelSet *old_bank = &abs->banks[abs->current];
-  abs->current++;
-  if (abs->current == 1) {  // ARRAY_SIZE(abs->banks)) {
-    if (s_switch_set) {
-      s_active_set ^= 1;
-      abs = &s_sets[s_active_set];
-      abs->current = 0;
-      s_switch_set = false;
-    } else {
-      abs->current = 0;
-    }
+  RMTChannelSet *s = &s_sets[s_active_set];
+  if (s_switch_set) {
+    s_active_set ^= 1;
+    s = &s_sets[s_active_set];
+    s_switch_set = false;
   }
-  // old_bank->DetachQ();
-  RMTChannelSet *new_bank = &abs->banks[abs->current];
-  new_bank->Upload();
-  new_bank->Start();
-  // new_bank->AttachQ();
-  // mgos_gpio_toggle(16);
+  s->Upload();
+  s->Start();
+  mgos_gpio_toggle(16);
   (void) arg;
 }
 
@@ -98,30 +81,25 @@ void SendDigits(uint8_t digits[5]) {
 
   s_switch_set = false;
   int inactive_set = (s_active_set ^ 1);
-  RMTChannelSetBank *ibs = &s_sets[inactive_set];
-  RMTChannelSet *ib0 = &ibs->banks[0];
-  ib0->Clear();
-  ib0->GenDigit(1, digits[0], 1, rl, gl, bl);
-  ib0->GenIdleSeq(dl);
-  ib0->GenDigit(2, digits[1], 1, rl, gl, bl);
-  ib0->GenIdleSeq(dl);
-  ib0->GenDigit(5, digits[2], 1, rl, gl, bl);
-  ib0->GenIdleSeq(dl);
+  RMTChannelSet *s = &s_sets[inactive_set];
+  s->Clear();
+  s->GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
+  s->GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
+  s->GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
+  s->GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
+  s->GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
 
-  ib0->Dump();
+  // s->Dump();
 
   if (!s_started) {
-    RMTChannelSet *ab0 = &s_sets[inactive_set].banks[0];
-    ab0->Upload();
     s_active_set = inactive_set;
-    RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
-    RMT.int_ena.val = RMT_CH0_TX_END_INT_CLR;
-    ab0->Start();
-    ab0->AttachQ();
+    s->Upload();
+    s->Start();
     s_started = true;
   } else {
     s_switch_set = true;
   }
+  RMT.int_ena.val = RMT_CH0_TX_END_INT_ENA;
 }
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
@@ -176,7 +154,7 @@ bool InitApp() {
     s_sets[i].Init();
   }
 
-  // mgos_gpio_setup_output(16, 0);
+  mgos_gpio_setup_output(16, 0);
 
   intr_handle_t inth;
   esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, RMTIntHandler, nullptr, &inth);

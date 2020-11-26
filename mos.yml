@@ -33,11 +33,11 @@ config_schema:
 cdefs:
   SRCLK_GPIO: 19
   SER_GPIO: 18
-  QSER_GPIO: 21
-  RCLK_R_GPIO: 5
-  RCLK_G_GPIO: 15
-  RCLK_B_GPIO: 23
-  Q_GPIO: 22
+  QSER_GPIO: 22
+  RCLK_GPIO: 23
+  OE_R_GPIO: 21
+  OE_G_GPIO: 15
+  OE_B_GPIO: 5
   # Buttons, active low
   K1_GPIO: 39
   K2_GPIO: 38
