@@ -7,6 +7,7 @@
 
 #include "mgos.hpp"
 #include "mgos_app.h"
+#include "mgos_bh1750.h"
 #include "mgos_rpc.h"
 #include "mgos_timers.hpp"
 
@@ -59,6 +60,8 @@ static int s_active_set = 0;
 static char time_str[9] = {'2', '5', ':', '1', '2', ':', '1', '1'};
 static uint16_t rl = 1000, gl = 1000, bl = 0, dl = 1000;
 static bool s_show_time = true;
+
+static struct mgos_bh1750 *s_bh = NULL;
 
 // Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
@@ -140,7 +143,11 @@ static void TimerCB(void *arg) {
   uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
                        s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
   SendDigits(digits);
-  LOG(LL_INFO, ("%s", time_str));
+  float lux = -1;
+  if (s_bh != NULL) {
+    lux = mgos_bh1750_read_lux(s_bh, nullptr);
+  }
+  LOG(LL_INFO, ("%s l %.2f", time_str, lux));
   (void) arg;
 }
 
@@ -163,6 +170,19 @@ bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
                      "{s: %Q, r: %d, g: %d, b: %d, d: %d}", SetColorHandler,
                      nullptr);
+
+  // Reset the light sensor.
+  mgos_gpio_setup_output(DVI_GPIO, 0);
+  mgos_msleep(1);
+  mgos_gpio_write(DVI_GPIO, 1);
+
+  uint8_t bh1750_addr = mgos_bh1750_detect();
+  if (bh1750_addr != 0) {
+    LOG(LL_INFO, ("Found BH1750 sensor at %#x", bh1750_addr));
+    s_bh = mgos_bh1750_create(bh1750_addr);
+    mgos_bh1750_set_config(s_bh, MGOS_BH1750_MODE_CONT_HIGH_RES_2,
+                           mgos_sys_config_get_bh1750_mtime());
+  }
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;

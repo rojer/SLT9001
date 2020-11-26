@@ -16,10 +16,11 @@ filesystem:
   - fs
 
 libs:
+  - origin: https://github.com/mongoose-os-libs/bh1750
   - origin: https://github.com/mongoose-os-libs/core
   - origin: https://github.com/mongoose-os-libs/rpc-service-config
   - origin: https://github.com/mongoose-os-libs/rpc-service-fs
-  - origin: https://github.com/mongoose-os-libs/rpc-service-gpio
+  - origin: https://github.com/mongoose-os-libs/rpc-service-i2c
   - origin: https://github.com/mongoose-os-libs/rpc-service-ota
   - origin: https://github.com/mongoose-os-libs/rpc-uart
   - origin: https://github.com/mongoose-os-libs/http-server
@@ -29,6 +30,10 @@ libs:
 
 config_schema:
   - ["sntp.enable", true]
+  - ["i2c.enable", true]
+  - ["i2c.scl_gpio", 33]
+  - ["i2c.sda_gpio", 32]
+  - ["bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
 
 cdefs:
   SRCLK_GPIO: 19
@@ -44,3 +49,5 @@ cdefs:
   K3_GPIO: 37
   # IR receiver
   IR_GPIO: 36
+  # Reset pin of the light sensor
+  DVI_GPIO: 25
