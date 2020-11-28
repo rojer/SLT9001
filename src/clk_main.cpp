@@ -16,7 +16,7 @@
 #include "soc/rmt_reg.h"
 #include "soc/rmt_struct.h"
 
-#include "clk_rmt_channel_set.hpp"
+#include "clk_display_controller.hpp"
 
 namespace clk {
 
@@ -39,42 +39,28 @@ static const uint8_t s_syms[16] = {
     0x71,  // 0111 0001, "F"
 };
 
-struct RMTChannelSetBank {
-  RMTChannelSet banks[3];
-  int current;
-
-  void Init() {
-    for (int i = 0; i < 3; i++) {
-      banks[i].Init();
-    }
-  }
-};
-
-// Two identical banks of channel sets are maintained:
-// the active one is used for display, when a change is needed it is made to the
-// inactive set and swapped out.
-static RMTChannelSet s_sets[2] = {RMTChannelSet(), RMTChannelSet()};
-static bool s_switch_set = false;
-static int s_active_set = 0;
+// Two controllers: one is active, the other is inactive and can be updated.
+static DisplayController s_ctls[2] = {DisplayController(), DisplayController()};
+static bool s_switch_ctl = false;
+static int s_active_ctl = 0;
 
 static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
-static uint16_t rl = 1000, gl = 1000, bl = 0, dl = 1000;
+static uint16_t rl = 0, gl = 400, bl = 0, dl = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
 
-// Advance to the next bank in the active set.
 IRAM void RMTIntHandler(void *arg) {
   mgos_gpio_toggle(16);
-  RMT.int_clr.val = RMT_CH0_TX_END_INT_CLR;
-  RMTChannelSet *s = &s_sets[s_active_set];
-  if (s_switch_set) {
-    s_active_set ^= 1;
-    s = &s_sets[s_active_set];
-    s_switch_set = false;
+  RMT.int_clr.ch0_tx_end = true;
+  DisplayController *ctl = &s_ctls[s_active_ctl];
+  if (s_switch_ctl) {
+    s_active_ctl ^= 1;
+    ctl = &s_ctls[s_active_ctl];
+    s_switch_ctl = false;
   }
-  s->Upload();
-  s->Start();
+  ctl->Upload();
+  ctl->Start();
   mgos_gpio_toggle(16);
   (void) arg;
 }
@@ -82,27 +68,27 @@ IRAM void RMTIntHandler(void *arg) {
 void SendDigits(uint8_t digits[5]) {
   static bool s_started = false;
 
-  s_switch_set = false;
-  int inactive_set = (s_active_set ^ 1);
-  RMTChannelSet *s = &s_sets[inactive_set];
-  s->Clear();
-  s->GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
-  s->GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
-  s->GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
-  s->GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
-  s->GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
+  s_switch_ctl = false;
+  int inactive_ctl = (s_active_ctl ^ 1);
+  DisplayController *ctl = &s_ctls[inactive_ctl];
+  ctl->Clear();
+  ctl->GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
+  ctl->GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
+  ctl->GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
+  ctl->GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
+  ctl->GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
 
   // s->Dump();
 
   if (!s_started) {
-    s_active_set = inactive_set;
-    s->Upload();
-    s->Start();
+    s_active_ctl = inactive_ctl;
+    ctl->Upload();
+    ctl->Start();
     s_started = true;
   } else {
-    s_switch_set = true;
+    s_switch_ctl = true;
   }
-  RMT.int_ena.val = RMT_CH0_TX_END_INT_ENA;
+  RMT.int_ena.ch0_tx_end = true;
 }
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
@@ -139,9 +125,12 @@ static void TimerCB(void *arg) {
     mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
   }
   uint8_t s2 =
-      (time_str[7] % 2 == 0 ? RMTChannelSet::kDigitValueEmpty : 0b10101111);
+      (time_str[7] % 2 != 0 ? DisplayController::kDigitValueEmpty : 0b10101111);
   uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
                        s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
+  if (time_str[0] == '0') {
+    digits[0] = DisplayController::kDigitValueEmpty;
+  }
   SendDigits(digits);
   float lux = -1;
   if (s_bh != NULL) {
@@ -158,7 +147,7 @@ bool InitApp() {
   RMT.apb_conf.fifo_mask = 1;
   RMT.apb_conf.mem_tx_wrap_en = 0;
   for (int i = 0; i < 2; i++) {
-    s_sets[i].Init();
+    s_ctls[i].Init();
   }
 
   mgos_gpio_setup_output(16, 0);

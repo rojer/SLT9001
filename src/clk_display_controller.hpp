@@ -7,14 +7,14 @@
 
 #include <cstdint>
 
-#include "clk_rmt_channel.hpp"
+#include "clk_rmt_output_channel.hpp"
 
 namespace clk {
 
-class RMTChannelSet {
+class DisplayController {
  public:
-  RMTChannelSet();
-  RMTChannelSet(const RMTChannelSet &other) = default;
+  DisplayController();
+  DisplayController(const DisplayController &other) = default;
 
   void Init();
 
@@ -31,8 +31,8 @@ class RMTChannelSet {
   void Dump();
 
  private:
-  RMTChannel srclk_, ser_, qser_, rclk_;
-  RMTChannel r_, g_, b_;
+  RMTOutputChannel srclk_, ser_, qser_, rclk_;
+  RMTOutputChannel r_, g_, b_;
 };
 
 }  // namespace clk
