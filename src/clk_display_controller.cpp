@@ -11,14 +11,15 @@
 
 namespace clk {
 
-DisplayController::DisplayController()
+DisplayController::DisplayController(void(int_handler)())
     : srclk_(RMTOutputChannel(0, SRCLK_GPIO, 1, 0, false /* loop */)),
       ser_(RMTOutputChannel(1, SER_GPIO, 0, 1, false /* loop */)),
       qser_(RMTOutputChannel(2, QSER_GPIO, 0, 1, false /* loop */)),
       rclk_(RMTOutputChannel(3, RCLK_GPIO, 1, 0, false /* loop */)),
       r_(RMTOutputChannel(4, OE_R_GPIO, 0, 1, false /* loop */)),
       g_(RMTOutputChannel(5, OE_G_GPIO, 0, 1, false /* loop */)),
-      b_(RMTOutputChannel(6, OE_B_GPIO, 0, 1, false /* loop */)) {
+      b_(RMTOutputChannel(6, OE_B_GPIO, 0, 1, false /* loop */)),
+      int_handler_(int_handler) {
 }
 
 void DisplayController::Init() {
@@ -29,6 +30,29 @@ void DisplayController::Init() {
   r_.Init();
   g_.Init();
   b_.Init();
+}
+
+IRAM void DisplayController::Attach() {
+  srclk_.SetIntHandler(ChannelIntHandler, this);
+  srclk_.Attach();
+  ser_.Attach();
+  qser_.Attach();
+  rclk_.Attach();
+  r_.Attach();
+  g_.Attach();
+  b_.Attach();
+}
+
+IRAM void DisplayController::Detach() {
+  srclk_.DisableInt();
+  srclk_.SetIntHandler(nullptr, nullptr);
+  srclk_.Detach();
+  ser_.Detach();
+  qser_.Detach();
+  rclk_.Detach();
+  r_.Detach();
+  g_.Detach();
+  b_.Detach();
 }
 
 void DisplayController::Clear() {
@@ -125,6 +149,7 @@ IRAM void DisplayController::Start() {
   uint32_t sv1 = srclk_.conf1_start_;
   uint32_t sv2 = r_.conf1_start_;
   uint32_t rmt_reg_base = RMT_CH0CONF1_REG;
+  srclk_.ClearInt();
   __asm__ __volatile__(
       "rsil a8, 15\n"
       "s32i.n  %[sv1], %[rrb], 0*8\n"
@@ -138,6 +163,7 @@ IRAM void DisplayController::Start() {
       : /* out */
       : /* in */[ rrb ] "a"(rmt_reg_base), [ sv1 ] "a"(sv1), [ sv2 ] "a"(sv2)
       : /* temp */ "a8", "memory");
+  srclk_.EnableInt();
 }
 
 void DisplayController::Dump() {
@@ -152,6 +178,78 @@ void DisplayController::Dump() {
                 srclk_.tot_len_, ser_.len_, ser_.tot_len_, qser_.len_,
                 qser_.tot_len_, rclk_.len_, rclk_.tot_len_, r_.len_,
                 r_.tot_len_, g_.len_, g_.tot_len_, b_.len_, b_.tot_len_));
+}
+
+void DisplayController::SetDigits(uint8_t digits[5], uint16_t rl, uint16_t gl,
+                                  uint16_t bl, uint16_t dl) {
+  Clear();
+  GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
+  GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
+  GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
+  GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
+  GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
+}
+
+// static
+IRAM void DisplayController::ChannelIntHandler(RMTChannel *ch, void *arg) {
+  DisplayController *ctl = static_cast<DisplayController *>(arg);
+  ctl->int_handler_();
+}
+
+// Two controllers: one is active, the other is inactive and can be updated.
+extern DisplayController s_ctls[2];
+bool s_started = false;
+static bool s_switch_ctl = false;
+static int s_active_ctl = 0;
+
+IRAM void DisplayIntHandler() {
+#ifdef DISPLAY_DEBUG_GPIO
+  mgos_gpio_toggle(DISPLAY_DEBUG_GPIO);
+#endif
+  RMT.int_clr.ch0_tx_end = true;
+  DisplayController *ctl = &s_ctls[s_active_ctl];
+  if (s_switch_ctl) {
+    ctl->Detach();
+    s_active_ctl ^= 1;
+    ctl = &s_ctls[s_active_ctl];
+    ctl->Attach();
+    s_switch_ctl = false;
+  }
+  ctl->Upload();
+  ctl->Start();
+#ifdef DISPLAY_DEBUG_GPIO
+  mgos_gpio_toggle(DISPLAY_DEBUG_GPIO);
+#endif
+}
+
+DisplayController s_ctls[2] = {DisplayController(DisplayIntHandler),
+                               DisplayController(DisplayIntHandler)};
+
+void SetDisplayDigits(uint8_t digits[5], uint16_t rl, uint16_t gl, uint16_t bl,
+                      uint16_t dl) {
+  s_switch_ctl = false;
+  if (!s_started) {
+    s_ctls[0].Init();
+    s_ctls[1].Init();
+    s_ctls[0].Detach();
+    s_ctls[1].Detach();
+#ifdef DISPLAY_DEBUG_GPIO
+    mgos_gpio_setup_output(DISPLAY_DEBUG_GPIO, 0);
+#endif
+  }
+  int inactive_ctl = (s_active_ctl ^ 1);
+  DisplayController *ctl = &s_ctls[inactive_ctl];
+  ctl->SetDigits(digits, rl, gl, bl, dl);
+
+  if (!s_started) {
+    s_active_ctl = inactive_ctl;
+    ctl->Upload();
+    ctl->Attach();
+    ctl->Start();
+    s_started = true;
+  } else {
+    s_switch_ctl = true;
+  }
 }
 
 }  // namespace clk

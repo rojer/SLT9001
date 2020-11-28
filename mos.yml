@@ -51,3 +51,5 @@ cdefs:
   IR_GPIO: 36
   # Reset pin of the light sensor
   DVI_GPIO: 25
+  # GPIO to debug display refresh activity
+  # DISPLAY_DEBUG_GPIO: 16

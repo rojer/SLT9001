@@ -11,11 +11,6 @@
 #include "mgos_rpc.h"
 #include "mgos_timers.hpp"
 
-#include "driver/periph_ctrl.h"
-#include "rom/ets_sys.h"
-#include "soc/rmt_reg.h"
-#include "soc/rmt_struct.h"
-
 #include "clk_display_controller.hpp"
 
 namespace clk {
@@ -39,57 +34,11 @@ static const uint8_t s_syms[16] = {
     0x71,  // 0111 0001, "F"
 };
 
-// Two controllers: one is active, the other is inactive and can be updated.
-static DisplayController s_ctls[2] = {DisplayController(), DisplayController()};
-static bool s_switch_ctl = false;
-static int s_active_ctl = 0;
-
 static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
 static uint16_t rl = 0, gl = 400, bl = 0, dl = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
-
-IRAM void RMTIntHandler(void *arg) {
-  mgos_gpio_toggle(16);
-  RMT.int_clr.ch0_tx_end = true;
-  DisplayController *ctl = &s_ctls[s_active_ctl];
-  if (s_switch_ctl) {
-    s_active_ctl ^= 1;
-    ctl = &s_ctls[s_active_ctl];
-    s_switch_ctl = false;
-  }
-  ctl->Upload();
-  ctl->Start();
-  mgos_gpio_toggle(16);
-  (void) arg;
-}
-
-void SendDigits(uint8_t digits[5]) {
-  static bool s_started = false;
-
-  s_switch_ctl = false;
-  int inactive_ctl = (s_active_ctl ^ 1);
-  DisplayController *ctl = &s_ctls[inactive_ctl];
-  ctl->Clear();
-  ctl->GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
-  ctl->GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
-  ctl->GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
-  ctl->GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
-  ctl->GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
-
-  // s->Dump();
-
-  if (!s_started) {
-    s_active_ctl = inactive_ctl;
-    ctl->Upload();
-    ctl->Start();
-    s_started = true;
-  } else {
-    s_switch_ctl = true;
-  }
-  RMT.int_ena.ch0_tx_end = true;
-}
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
@@ -131,7 +80,7 @@ static void TimerCB(void *arg) {
   if (time_str[0] == '0') {
     digits[0] = DisplayController::kDigitValueEmpty;
   }
-  SendDigits(digits);
+  SetDisplayDigits(digits, rl, gl, bl, dl);
   float lux = -1;
   if (s_bh != NULL) {
     lux = mgos_bh1750_read_lux(s_bh, nullptr);
@@ -143,19 +92,6 @@ static void TimerCB(void *arg) {
 static mgos::ScopedTimer s_tmr(std::bind(TimerCB, nullptr));
 
 bool InitApp() {
-  periph_module_enable(PERIPH_RMT_MODULE);
-  RMT.apb_conf.fifo_mask = 1;
-  RMT.apb_conf.mem_tx_wrap_en = 0;
-  for (int i = 0; i < 2; i++) {
-    s_ctls[i].Init();
-  }
-
-  mgos_gpio_setup_output(16, 0);
-
-  intr_handle_t inth;
-  esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, RMTIntHandler, nullptr, &inth);
-  esp_intr_set_in_iram(inth, true);
-
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
                      "{s: %Q, r: %d, g: %d, b: %d, d: %d}", SetColorHandler,
                      nullptr);
