@@ -231,8 +231,6 @@ void SetDisplayDigits(uint8_t digits[5], uint16_t rl, uint16_t gl, uint16_t bl,
   if (!s_started) {
     s_ctls[0].Init();
     s_ctls[1].Init();
-    s_ctls[0].Detach();
-    s_ctls[1].Detach();
 #ifdef DISPLAY_DEBUG_GPIO
     mgos_gpio_setup_output(DISPLAY_DEBUG_GPIO, 0);
 #endif

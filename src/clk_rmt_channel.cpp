@@ -25,12 +25,60 @@ void RMTChannel::Init() {
   periph_module_enable(PERIPH_RMT_MODULE);
   RMT.apb_conf.fifo_mask = 1;
   DisableInt();
+  Clear(true, true);
 }
 
-#define RMT_CH_INT_MASK(ch)                                                 \
-  ((RMT_CH0_TX_THR_EVENT_INT_ENA << (ch)) |                                 \
-   ((RMT_CH0_ERR_INT_ENA | RMT_CH0_RX_END_INT_ENA | RMT_CH0_TX_END_INT_ENA) \
-    << ((ch) *3)))
+const RMTChannel::Item *RMTChannel::data() const {
+  return &data_.items[0];
+}
+
+size_t RMTChannel::len() const {
+  return len_;
+}
+
+void RMTChannel::Clear(bool buf, bool mem) {
+  len_ = 0;
+  tot_len_ = 0;
+  for (size_t i = 0; i < ARRAY_SIZE(data_.data32); i++) {
+    if (buf) data_.data32[i] = 0;
+    if (mem) RMTMEM.chan[ch_].data32[i].val = 0;
+  }
+}
+
+IRAM void RMTChannel::Upload() {
+  const uint32_t *src = data_.data32;
+  uint32_t *dst = (uint32_t *) &RMTMEM.chan[ch_].data32[0].val;
+  for (int num_words = len_ / 2; num_words > 0; num_words--) {
+    *dst++ = *src++;
+  }
+  if (len_ % 2 == 0) {
+    *dst = (((uint32_t) idle_value_) << 15);
+  } else {
+    *dst = (*src & 0xffff) | (((uint32_t) idle_value_) << 31);
+  }
+}
+
+IRAM void RMTChannel::Download() {
+  len_ = 0;
+  tot_len_ = 0;
+  for (size_t i = 0; i < ARRAY_SIZE(data_.data32); i++) {
+    data_.data32[i] = RMTMEM.chan[ch_].data32[i].val;
+    uint32_t l = data_.items[len_].num_cycles;
+    if (l == 0) break;
+    len_++;
+    tot_len_ += l;
+    l = data_.items[len_].num_cycles;
+    if (l == 0) break;
+    len_++;
+    tot_len_ += l;
+  }
+}
+
+#define RMT_CH_INT_MASK(ch)                                                    \
+  ((uint32_t)(                                                                 \
+      (RMT_CH0_TX_THR_EVENT_INT_ENA << (ch)) |                                 \
+      ((RMT_CH0_ERR_INT_ENA | RMT_CH0_RX_END_INT_ENA | RMT_CH0_TX_END_INT_ENA) \
+       << ((ch) *3))))
 
 IRAM void RMTChannel::DisableInt() {
   RMT.int_ena.val &= ~RMT_CH_INT_MASK(ch_);
@@ -41,11 +89,20 @@ IRAM void RMTChannel::ClearInt() {
 }
 
 void RMTChannel::Dump() {
-  LOG(LL_INFO, ("ch %d pin %d n %d tot_len %d conf0 %#08x carr %#08x start "
-                "%#08x stop %#08x",
-                ch_, pin_, len_, tot_len_, RMT.conf_ch[ch_].conf0.val,
-                RMT.carrier_duty_ch[ch_].val, conf1_start_, conf1_stop_));
-  mg_hexdumpf(stderr, (void *) &data_, len_ * 2);
+  LOG(LL_INFO,
+      ("ch %d pin %d n %d tot_len %d conf0 %#08x conf1 %#08x carr %#08x start "
+       "%#08x stop %#08x | int_ena %#08x int_raw %#08x",
+       ch_, pin_, len_, tot_len_, RMT.conf_ch[ch_].conf0.val,
+       RMT.conf_ch[ch_].conf1.val, RMT.carrier_duty_ch[ch_].val, conf1_start_,
+       conf1_stop_, RMT.int_ena.val & RMT_CH_INT_MASK(ch_),
+       RMT.int_raw.val & RMT_CH_INT_MASK(ch_)));
+  if (len_ > 0) {
+    for (uint32_t i = 0; i < len_; i++) {
+      const Item &it = data_.items[i];
+      fprintf(stderr, "%d:%d ", it.val, it.num_cycles);
+    }
+    fprintf(stderr, "\n");
+  }
 }
 
 IRAM void RMTChannel::SetIntHandler(void (*handler)(RMTChannel *obj, void *arg),
@@ -72,7 +129,8 @@ IRAM void RMTChannel::RMTIntHandler(void *arg) {
       (RMT_CH0_ERR_INT_ST | RMT_CH0_RX_END_INT_ST | RMT_CH0_TX_END_INT_ST);
   for (size_t ch = 0; ch < RMT_NUM_CH; ch++, int_mask1 <<= 1, int_mask2 <<= 3) {
     uint32_t ch_int_mask = int_mask1 | int_mask2;
-    if ((int_st & ch_int_mask) == 0) continue;
+    uint32_t ch_int_st = (int_st & ch_int_mask);
+    if (ch_int_st == 0) continue;
     RMT.int_clr.val = ch_int_mask;
     RMTChannel *obj = int_handler_objs_[ch];
     if (obj == nullptr || obj->int_handler_ == nullptr) continue;

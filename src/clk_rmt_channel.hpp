@@ -21,6 +21,21 @@ class RMTChannel {
 
   virtual void Init();
 
+  struct Item {
+    uint16_t num_cycles : 15;
+    uint16_t val : 1;
+  } __attribute__((packed));
+
+  const Item *data() const;
+  size_t len() const;
+
+  // Clear the data buffer and/or peripheral memory.
+  void Clear(bool buf = true, bool mem = false);
+  // Upload the sequence from the buffer to the peripheral.
+  void Upload();
+  // Download the sequence from the peripheral memory to the buffer.
+  void Download();
+
   // Interrupt control.
   virtual void EnableInt() = 0;
   void DisableInt();
@@ -38,11 +53,6 @@ class RMTChannel {
 
   // Dump current sequence in the buffer.
   void Dump();
-
-  struct Item {
-    uint16_t num_cycles : 15;
-    uint16_t val : 1;
-  } __attribute__((packed));
 
  protected:
   const uint8_t ch_;

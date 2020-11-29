@@ -47,7 +47,6 @@ void RMTOutputChannel::Init() {
   RMT.tx_lim_ch[ch_].limit = tx_int_thresh_;
   PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_], PIN_FUNC_GPIO);
   gpio_set_direction((gpio_num_t) pin_, GPIO_MODE_OUTPUT);
-  Attach();
   Stop();
 }
 
@@ -105,24 +104,6 @@ IRAM void RMTOutputChannel::OffTo(const RMTOutputChannel &other) {
   uint16_t diff = other.tot_len_ - tot_len_;
   if (diff == 0) return;
   Val(!on_value_, diff);
-}
-
-void RMTOutputChannel::Clear() {
-  len_ = 0;
-  tot_len_ = 0;
-}
-
-IRAM void RMTOutputChannel::Upload() {
-  const uint32_t *src = data_.data32;
-  uint32_t *dst = (uint32_t *) &RMTMEM.chan[ch_].data32[0].val;
-  for (int num_words = len_ / 2; num_words > 0; num_words--) {
-    *dst++ = *src++;
-  }
-  if (len_ % 2 == 0) {
-    *dst = (((uint32_t) idle_value_) << 15);
-  } else {
-    *dst = (*src & 0xffff) | (((uint32_t) idle_value_) << 31);
-  }
 }
 
 IRAM void RMTOutputChannel::Start() {

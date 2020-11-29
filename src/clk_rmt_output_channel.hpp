@@ -21,15 +21,11 @@ class RMTOutputChannel : public RMTChannel {
   void EnableInt() override;
 
   // Methods to build the sequence.
-  void Clear();
   void On(uint16_t num_cycles);
   void Off(uint16_t num_cycles);
   void Set(bool on, uint16_t num_cycles);
   void OnTo(const RMTOutputChannel &other);
   void OffTo(const RMTOutputChannel &other);
-
-  // Upload the sequence from memory to the peripheral.
-  void Upload();
 
   void Start() override;
   void Stop() override;
