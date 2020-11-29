@@ -11,8 +11,8 @@ namespace clk {
 
 class RMTInputChannel : public RMTChannel {
  public:
-  RMTInputChannel(uint8_t ch, int pin, bool idle_value, uint8_t filter_thresh,
-                  uint16_t idle_thresh);
+  RMTInputChannel(uint8_t ch, int pin, bool invert, bool idle_value,
+                  uint8_t filter_thresh, uint16_t idle_thresh);
   RMTInputChannel(const RMTInputChannel &other) = default;
 
   void Init() override;
@@ -28,6 +28,7 @@ class RMTInputChannel : public RMTChannel {
   void Detach() override;
 
  private:
+  const bool invert_;
 };
 
 }  // namespace clk

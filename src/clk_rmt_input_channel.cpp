@@ -14,9 +14,10 @@
 
 namespace clk {
 
-RMTInputChannel::RMTInputChannel(uint8_t ch, int pin, bool idle_value,
-                                 uint8_t filter_thresh, uint16_t idle_thresh)
-    : RMTChannel(ch, pin, idle_value) {
+RMTInputChannel::RMTInputChannel(uint8_t ch, int pin, bool invert,
+                                 bool idle_value, uint8_t filter_thresh,
+                                 uint16_t idle_thresh)
+    : RMTChannel(ch, pin, idle_value), invert_(invert) {
   uint32_t conf1_common = (RMT_REF_ALWAYS_ON_CH0 | RMT_MEM_OWNER_CH0 |
                            RMT_REF_CNT_RST_CH0 | RMT_MEM_WR_RST_CH0);
   if (filter_thresh > 0) {
@@ -54,7 +55,7 @@ IRAM void RMTInputChannel::Stop() {
 
 IRAM void RMTInputChannel::Attach() {
   if (pin_ <= 0) return;
-  gpio_matrix_in(pin_, RMT_SIG_IN0_IDX + ch_, false /* inv */);
+  gpio_matrix_in(pin_, RMT_SIG_IN0_IDX + ch_, invert_);
   ClearInt();
   SetIntHandlerInternal(ch_, this);
 }
@@ -63,7 +64,7 @@ IRAM void RMTInputChannel::Detach() {
   if (pin_ <= 0) return;
   DisableInt();
   SetIntHandlerInternal(ch_, nullptr);
-  gpio_matrix_in(pin_, SIG_GPIO_OUT_IDX, false /* inv */);
+  gpio_matrix_in(pin_, SIG_GPIO_OUT_IDX, invert_);
 }
 
 }  // namespace clk

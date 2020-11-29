@@ -34,6 +34,7 @@ config_schema:
   - ["i2c.scl_gpio", 33]
   - ["i2c.sda_gpio", 32]
   - ["bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
+  - ["remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
 
 cdefs:
   SRCLK_GPIO: 19

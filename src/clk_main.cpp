@@ -12,6 +12,7 @@
 #include "mgos_timers.hpp"
 
 #include "clk_display_controller.hpp"
+#include "clk_remote_control.hpp"
 #include "clk_rmt_input_channel.hpp"
 
 namespace clk {
@@ -70,9 +71,6 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   mg_rpc_send_responsef(ri, nullptr);
 }
 
-static RMTInputChannel s_ir_ch(7, IR_GPIO, 1, 50, 20000);
-static int s_num_ints = 0;
-
 static void TimerCB(void *arg) {
   if (s_show_time) {
     mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
@@ -89,40 +87,11 @@ static void TimerCB(void *arg) {
   if (s_bh != NULL) {
     lux = mgos_bh1750_read_lux(s_bh, nullptr);
   }
-  LOG(LL_INFO, ("%s l %.2f | %d", time_str, lux, s_num_ints));
-  s_num_ints = 0;
+  LOG(LL_INFO, ("%s l %.2f", time_str, lux));
   (void) arg;
 }
 
 static mgos::ScopedTimer s_tmr(std::bind(TimerCB, nullptr));
-
-IRAM static void IRRMTIntHandler2(void *arg) {
-  s_ir_ch.Download();
-  LOG(LL_INFO, ("Downloaded %d items", (int) s_ir_ch.len()));
-  s_ir_ch.Dump();
-  s_ir_ch.Clear(true /* buf */, true /* mem */);
-  mgos_gpio_enable_int(IR_GPIO);
-  (void) arg;
-}
-
-IRAM static void IRRMTIntHandler(RMTChannel *ch, void *arg) {
-  s_ir_ch.Stop();
-  s_ir_ch.Detach();
-  mgos_invoke_cb(IRRMTIntHandler2, nullptr, true /* from_isr */);
-  (void) ch;
-  (void) arg;
-}
-
-IRAM static void IRGPIOIntHandler(int pin, void *arg) {
-  s_num_ints++;
-  mgos_gpio_disable_int(IR_GPIO);
-  s_ir_ch.Attach();
-  s_ir_ch.ClearInt();
-  s_ir_ch.EnableInt();
-  s_ir_ch.Start();
-  (void) pin;
-  (void) arg;
-}
 
 bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
@@ -142,14 +111,7 @@ bool InitApp() {
                            mgos_sys_config_get_bh1750_mtime());
   }
 
-  s_ir_ch.Init();
-  s_ir_ch.SetIntHandler(IRRMTIntHandler, nullptr);
-  mgos_gpio_setup_input(IR_GPIO, MGOS_GPIO_PULL_NONE);
-  mgos_gpio_set_int_handler(IR_GPIO, MGOS_GPIO_INT_EDGE_NEG, IRGPIOIntHandler,
-                            nullptr);
-  // mgos_gpio_set_int_handler_isr(IR_GPIO, MGOS_GPIO_INT_EDGE_NEG,
-  // IRGPIOIntHandler, nullptr);
-  mgos_gpio_enable_int(IR_GPIO);
+  RemoteControlInit();
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;
