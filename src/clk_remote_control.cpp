@@ -16,15 +16,21 @@
 
 namespace clk {
 
-static constexpr uint16_t kBtnCodeHold = 0;           // "Button held down"
-static constexpr int kBtnHoldMaxAgeMicros = 1000000;  // 1 second
+static constexpr uint16_t kBtnCodeHold = 0;              // "Button held down"
+static constexpr int kBtnHoldMaxAgeMicros = 1000000;     // 1 second
+static constexpr int kBtnReleaseTimeoutMicros = 200000;  // 200 ms
+static constexpr int kTimerPeriodMs = 50;                // 100 ms
 
 static RMTInputChannel s_ir_ch(7, IR_GPIO, false, 1, 50, 20000);
 static RemoteControlButton s_last_btn = RemoteControlButton::kNone;
 static int64_t s_last_btn_ts = 0;
-
+static int64_t s_last_ev_ts = 0;
+static int s_ev_count = 0;
 typedef std::map<uint16_t, RemoteControlButton> ButtonMap;
 static ButtonMap s_btn_map;
+
+static void TimerCB();
+static mgos::Timer s_timer_(TimerCB);
 
 static bool ApproxEq(uint32_t val, uint32_t exp) {
   float vf = (float) val;
@@ -114,6 +120,27 @@ static mgos::StatusOr<uint16_t> DecodeSequence(const RMTChannel::Item *data,
   return code;
 }
 
+static void TimerCB() {
+  if (s_last_btn == RemoteControlButton::kNone) {
+    s_timer_.Clear();
+    return;
+  }
+  int64_t now = mgos_uptime_micros();
+  if (now - s_last_btn_ts > kBtnReleaseTimeoutMicros) {
+    RemoteControlButtonUpEventArg arg = {.btn = s_last_btn};
+    mgos_event_trigger((int) RemoteControlButtonEvent::kButtonUp, &arg);
+    s_timer_.Clear();
+    s_last_btn = RemoteControlButton::kNone;
+    return;
+  }
+  int64_t repeat_wait = std::max(1000000 / s_ev_count, 100000);
+  if (now - s_last_ev_ts < repeat_wait) return;
+  RemoteControlButtonDownEventArg arg = {.btn = s_last_btn, .repeat = true};
+  mgos_event_trigger((int) RemoteControlButtonEvent::kButtonDown, &arg);
+  s_last_ev_ts = now;
+  s_ev_count++;
+}
+
 static void ProcessSequence() {
   auto st = DecodeSequence(s_ir_ch.data(), s_ir_ch.len());
   if (!st.ok()) {
@@ -124,19 +151,39 @@ static void ProcessSequence() {
   }
   uint16_t code = st.ValueOrDie();
   int64_t now = mgos_uptime_micros();
+  RemoteControlButton btn = RemoteControlButton::kNone;
   if (code == kBtnCodeHold) {
-    if (now - s_last_btn_ts < kBtnHoldMaxAgeMicros) {
-      s_last_btn_ts = now;
+    if (s_last_btn != RemoteControlButton::kNone &&
+        (now - s_last_btn_ts < kBtnHoldMaxAgeMicros)) {
+      btn = s_last_btn;
     } else {
       return;
     }
   } else {
     const auto &it = s_btn_map.find(code);
-    if (it == s_btn_map.end()) return;
-    s_last_btn = it->second;
-    s_last_btn_ts = now;
+    if (it != s_btn_map.end()) {
+      btn = it->second;
+    }
   }
-  LOG(LL_INFO, ("BTN: %d", (int) s_last_btn));
+  if (btn != s_last_btn) {
+    if (s_last_btn != RemoteControlButton::kNone) {
+      RemoteControlButtonUpEventArg arg = {.btn = s_last_btn};
+      mgos_event_trigger((int) RemoteControlButtonEvent::kButtonUp, &arg);
+    }
+    if (btn != RemoteControlButton::kNone) {
+      RemoteControlButtonDownEventArg arg = {.btn = btn, .repeat = false};
+      mgos_event_trigger((int) RemoteControlButtonEvent::kButtonDown, &arg);
+      s_ev_count = 1;
+      s_last_ev_ts = now;
+      s_timer_.Reset(kTimerPeriodMs, MGOS_TIMER_REPEAT);
+    }
+    s_last_btn = btn;
+  }
+  if (btn != RemoteControlButton::kNone) {
+    s_last_btn_ts = now;
+  } else {
+    s_timer_.Clear();
+  }
 }
 
 static void IRRMTIntHandler2(void *arg) {

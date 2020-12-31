@@ -42,6 +42,27 @@ static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
 
+static void TimerCB() {
+  if (s_show_time) {
+    mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
+  }
+  uint8_t s2 =
+      (time_str[7] % 2 != 0 ? DisplayController::kDigitValueEmpty : 0b10101111);
+  uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
+                       s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
+  if (time_str[0] == '0') {
+    digits[0] = DisplayController::kDigitValueEmpty;
+  }
+  SetDisplayDigits(digits, rl, gl, bl, dl);
+  float lux = -1;
+  if (s_bh != NULL) {
+    lux = mgos_bh1750_read_lux(s_bh, nullptr);
+  }
+  LOG(LL_INFO, ("%s l %.2f", time_str, lux));
+}
+
+static mgos::Timer s_tmr(TimerCB);
+
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
   char *s = NULL;
@@ -68,30 +89,25 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   if (d >= 0) {
     dl = d;
   }
+  TimerCB();
   mg_rpc_send_responsef(ri, nullptr);
 }
 
-static void TimerCB(void *arg) {
-  if (s_show_time) {
-    mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
-  }
-  uint8_t s2 =
-      (time_str[7] % 2 != 0 ? DisplayController::kDigitValueEmpty : 0b10101111);
-  uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
-                       s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
-  if (time_str[0] == '0') {
-    digits[0] = DisplayController::kDigitValueEmpty;
-  }
-  SetDisplayDigits(digits, rl, gl, bl, dl);
-  float lux = -1;
-  if (s_bh != NULL) {
-    lux = mgos_bh1750_read_lux(s_bh, nullptr);
-  }
-  LOG(LL_INFO, ("%s l %.2f", time_str, lux));
-  (void) arg;
+static void ButtonDownCB(int ev, void *ev_data, void *userdata) {
+  const RemoteControlButtonDownEventArg *arg =
+      (RemoteControlButtonDownEventArg *) ev_data;
+  LOG(LL_INFO, ("BTN DOWN: %d", (int) arg->btn));
+  (void) userdata;
+  (void) ev;
 }
 
-static mgos::ScopedTimer s_tmr(std::bind(TimerCB, nullptr));
+static void ButtonUpCB(int ev, void *ev_data, void *userdata) {
+  const RemoteControlButtonUpEventArg *arg =
+      (RemoteControlButtonUpEventArg *) ev_data;
+  LOG(LL_INFO, ("BTN UP: %d", (int) arg->btn));
+  (void) userdata;
+  (void) ev;
+}
 
 bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
@@ -112,6 +128,10 @@ bool InitApp() {
   }
 
   RemoteControlInit();
+  mgos_event_add_handler((int) RemoteControlButtonEvent::kButtonDown,
+                         ButtonDownCB, nullptr);
+  mgos_event_add_handler((int) RemoteControlButtonEvent::kButtonUp, ButtonUpCB,
+                         nullptr);
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;

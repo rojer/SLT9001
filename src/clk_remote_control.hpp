@@ -5,6 +5,10 @@
 
 #pragma once
 
+#include "mgos_event.h"
+
+#define CLK_BTN_EV_BASE MGOS_EVENT_BASE('B', 'T', 'N')
+
 namespace clk {
 
 enum class RemoteControlButton {
@@ -16,6 +20,20 @@ enum class RemoteControlButton {
   kDown = 5,
   kReset = 6,
   kMax,
+};
+
+enum class RemoteControlButtonEvent {
+  kButtonDown = CLK_BTN_EV_BASE,
+  kButtonRepeat,
+  kButtonUp,
+};
+
+struct RemoteControlButtonDownEventArg {
+  RemoteControlButton btn;
+  bool repeat;
+};
+struct RemoteControlButtonUpEventArg {
+  RemoteControlButton btn;
 };
 
 void RemoteControlInit();
