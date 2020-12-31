@@ -1,7 +1,7 @@
 author: 'Deomid "rojer" Ryabkov'
 description: LED clock firmware
 name: clock
-version: 0.2.0
+version: 0.3.1
 platform: esp32
 manifest_version: 2020-01-29
 
@@ -18,6 +18,7 @@ filesystem:
 libs:
   - origin: https://github.com/mongoose-os-libs/bh1750
   - origin: https://github.com/mongoose-os-libs/core
+  - origin: https://github.com/mongoose-os-libs/dns-sd
   - origin: https://github.com/mongoose-os-libs/rpc-service-config
   - origin: https://github.com/mongoose-os-libs/rpc-service-fs
   - origin: https://github.com/mongoose-os-libs/rpc-service-i2c
@@ -30,18 +31,21 @@ libs:
   - origin: https://github.com/mongoose-os-libs/wifi
 
 config_schema:
-  - ["sntp.enable", true]
+  - ["dns_sd.enable", true]
+  - ["dns_sd.host_name", ""]
   - ["i2c.enable", true]
   - ["i2c.scl_gpio", 33]
   - ["i2c.sda_gpio", 32]
   - ["i2c.freq", 400000]
-  - ["bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
-  - ["remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
-  - ["u_rl", "i", 200, {title: "Red"}]
-  - ["u_gl", "i", 200, {title: "Green"}]
-  - ["u_bl", "i", 200, {title: "Blue"}]
-  - ["u_br", "i", 0, {title: "Brightness, 0 = auto or 1 - 100"}]
-  - ["auto_br_f", "d", 1.0, {title: "Auto brightness correction factor"}]
+  - ["sntp.enable", true]
+
+  - ["clock.rl", "i", 200, {title: "Red"}]
+  - ["clock.gl", "i", 200, {title: "Green"}]
+  - ["clock.bl", "i", 0, {title: "Blue"}]
+  - ["clock.br", "i", 0, {title: "Brightness, 0 = auto or 1 - 100"}]
+  - ["clock.auto_br_f", "d", 1.0, {title: "Auto brightness correction factor"}]
+  - ["clock.bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
+  - ["clock.remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
 
 cdefs:
   SRCLK_GPIO: 19

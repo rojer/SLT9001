@@ -237,7 +237,7 @@ static mgos::StatusOr<ButtonMap> ParseButtonMap(const char *map_spec) {
 }
 
 void RemoteControlInit() {
-  auto stv = ParseButtonMap(mgos_sys_config_get_remote_button_map());
+  auto stv = ParseButtonMap(mgos_sys_config_get_clock_remote_button_map());
   if (stv.ok()) {
     s_btn_map = stv.ValueOrDie();
   } else {

@@ -44,11 +44,11 @@ static bool s_show_time = true;
 static struct mgos_bh1750 *s_bh = NULL;
 
 static int CalcBrightness(float lux) {
-  int br_pct = mgos_sys_config_get_u_br();
+  int br_pct = mgos_sys_config_get_clock_br();
   if (br_pct < 0) return -1;
   if (br_pct == 0) {
     if (lux >= 0) {
-      br_pct = (int) (lux * mgos_sys_config_get_auto_br_f());
+      br_pct = (int) (lux * mgos_sys_config_get_clock_auto_br_f());
       if (br_pct < 1) br_pct = 1;
       if (br_pct > 100) br_pct = 100;
     } else {
@@ -56,9 +56,9 @@ static int CalcBrightness(float lux) {
     }
   }
   BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
-  s_rl = (int) (mgos_sys_config_get_u_rl() * e.sf);
-  s_gl = (int) (mgos_sys_config_get_u_gl() * e.sf);
-  s_bl = (int) (mgos_sys_config_get_u_bl() * e.sf);
+  s_rl = (int) (mgos_sys_config_get_clock_rl() * e.sf);
+  s_gl = (int) (mgos_sys_config_get_clock_gl() * e.sf);
+  s_bl = (int) (mgos_sys_config_get_clock_bl() * e.sf);
   s_dl = e.dl;
   return br_pct;
 }
@@ -105,19 +105,19 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
     free(s);
   }
   if (rl >= 0) {
-    mgos_sys_config_set_u_rl(rl);
+    mgos_sys_config_set_clock_rl(rl);
   }
   if (gl >= 0) {
-    mgos_sys_config_set_u_gl(gl);
+    mgos_sys_config_set_clock_gl(gl);
   }
   if (bl >= 0) {
-    mgos_sys_config_set_u_bl(bl);
+    mgos_sys_config_set_clock_bl(bl);
   }
   if (dl >= 0) {
     s_dl = dl;
   }
   if (br != -2) {
-    mgos_sys_config_set_u_br(br);
+    mgos_sys_config_set_clock_br(br);
   }
   UpdateDisplay();
   mg_rpc_send_responsef(ri, nullptr);
@@ -155,7 +155,7 @@ bool InitApp() {
     LOG(LL_INFO, ("Found BH1750 sensor at %#x", bh1750_addr));
     s_bh = mgos_bh1750_create(bh1750_addr);
     mgos_bh1750_set_config(s_bh, MGOS_BH1750_MODE_CONT_HIGH_RES_2,
-                           mgos_sys_config_get_bh1750_mtime());
+                           mgos_sys_config_get_clock_bh1750_mtime());
   }
 
   RemoteControlInit();
