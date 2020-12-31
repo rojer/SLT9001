@@ -145,8 +145,8 @@ static void ProcessSequence() {
   auto st = DecodeSequence(s_ir_ch.data(), s_ir_ch.len());
   if (!st.ok()) {
     const auto ms = st.status().ToString();
-    LOG(LL_ERROR, ("Invalid control sequence: %s", ms.c_str()));
-    s_ir_ch.Dump();
+    LOG(LL_DEBUG, ("Invalid control sequence: %s", ms.c_str()));
+    // s_ir_ch.Dump();
     return;
   }
   uint16_t code = st.ValueOrDie();

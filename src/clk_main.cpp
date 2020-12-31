@@ -11,6 +11,7 @@
 #include "mgos_rpc.h"
 #include "mgos_timers.hpp"
 
+#include "clk_br_curve.hpp"
 #include "clk_display_controller.hpp"
 #include "clk_remote_control.hpp"
 #include "clk_rmt_input_channel.hpp"
@@ -37,12 +38,32 @@ static const uint8_t s_syms[16] = {
 };
 
 static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
-static uint16_t rl = 0, gl = 400, bl = 0, dl = 0;
+static uint16_t s_rl = 0, s_gl = 0, s_bl = 0, s_dl = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
 
-static void TimerCB() {
+static int CalcBrightness(float lux) {
+  int br_pct = mgos_sys_config_get_u_br();
+  if (br_pct < 0) return -1;
+  if (br_pct == 0) {
+    if (lux >= 0) {
+      br_pct = (int) (lux * mgos_sys_config_get_auto_br_f());
+      if (br_pct < 1) br_pct = 1;
+      if (br_pct > 100) br_pct = 100;
+    } else {
+      br_pct = 50;
+    }
+  }
+  BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
+  s_rl = (int) (mgos_sys_config_get_u_rl() * e.sf);
+  s_gl = (int) (mgos_sys_config_get_u_gl() * e.sf);
+  s_bl = (int) (mgos_sys_config_get_u_bl() * e.sf);
+  s_dl = e.dl;
+  return br_pct;
+}
+
+static void UpdateDisplay() {
   if (s_show_time) {
     mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
   }
@@ -53,21 +74,27 @@ static void TimerCB() {
   if (time_str[0] == '0') {
     digits[0] = DisplayController::kDigitValueEmpty;
   }
-  SetDisplayDigits(digits, rl, gl, bl, dl);
   float lux = -1;
   if (s_bh != NULL) {
     lux = mgos_bh1750_read_lux(s_bh, nullptr);
   }
-  LOG(LL_INFO, ("%s l %.2f", time_str, lux));
+  int br = CalcBrightness(lux);
+  SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_dl);
+  LOG(LL_INFO, ("%s lux %.2f rl %d gl %d bl %d dl %d br %d", time_str, lux,
+                s_rl, s_gl, s_bl, s_dl, br));
 }
 
-static mgos::Timer s_tmr(TimerCB);
+static mgos::Timer s_tmr(UpdateDisplay);
 
 static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
   char *s = NULL;
-  int r = -1, g = -1, b = -1, d = -1;
-  json_scanf(args.p, args.len, ri->args_fmt, &s, &r, &g, &b, &d);
+  int rl = -1, gl = -1, bl = -1, dl = -1, br = -2;
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br);
+  if (br != -2 && (br < -1 || br > 100)) {
+    mg_rpc_send_errorf(ri, -1, "invalid %s", "br");
+    return;
+  }
   if (s != nullptr) {
     if (strlen(s) != 0) {
       s_show_time = false;
@@ -77,20 +104,24 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
     }
     free(s);
   }
-  if (r >= 0) {
-    rl = r;
+  if (rl >= 0) {
+    mgos_sys_config_set_u_rl(rl);
   }
-  if (g >= 0) {
-    gl = g;
+  if (gl >= 0) {
+    mgos_sys_config_set_u_gl(gl);
   }
-  if (b >= 0) {
-    bl = b;
+  if (bl >= 0) {
+    mgos_sys_config_set_u_bl(bl);
   }
-  if (d >= 0) {
-    dl = d;
+  if (dl >= 0) {
+    s_dl = dl;
   }
-  TimerCB();
+  if (br != -2) {
+    mgos_sys_config_set_u_br(br);
+  }
+  UpdateDisplay();
   mg_rpc_send_responsef(ri, nullptr);
+  mgos_sys_config_save(&mgos_sys_config, false, nullptr);
 }
 
 static void ButtonDownCB(int ev, void *ev_data, void *userdata) {
@@ -111,8 +142,8 @@ static void ButtonUpCB(int ev, void *ev_data, void *userdata) {
 
 bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
-                     "{s: %Q, r: %d, g: %d, b: %d, d: %d}", SetColorHandler,
-                     nullptr);
+                     "{s: %Q, r: %d, g: %d, b: %d, d: %d, br: %d}",
+                     SetColorHandler, nullptr);
 
   // Reset the light sensor.
   mgos_gpio_setup_output(DVI_GPIO, 0);

@@ -1,7 +1,7 @@
 author: 'Deomid "rojer" Ryabkov'
 description: LED clock firmware
 name: clock
-version: 0.1.0
+version: 0.2.0
 platform: esp32
 manifest_version: 2020-01-29
 
@@ -24,6 +24,7 @@ libs:
   - origin: https://github.com/mongoose-os-libs/rpc-service-ota
   - origin: https://github.com/mongoose-os-libs/rpc-uart
   - origin: https://github.com/mongoose-os-libs/http-server
+  - origin: https://github.com/mongoose-os-libs/ota-http-server
   - origin: https://github.com/mongoose-os-libs/rpc-ws
   - origin: https://github.com/mongoose-os-libs/sntp
   - origin: https://github.com/mongoose-os-libs/wifi
@@ -33,8 +34,14 @@ config_schema:
   - ["i2c.enable", true]
   - ["i2c.scl_gpio", 33]
   - ["i2c.sda_gpio", 32]
+  - ["i2c.freq", 400000]
   - ["bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
   - ["remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
+  - ["u_rl", "i", 200, {title: "Red"}]
+  - ["u_gl", "i", 200, {title: "Green"}]
+  - ["u_bl", "i", 200, {title: "Blue"}]
+  - ["u_br", "i", 0, {title: "Brightness, 0 = auto or 1 - 100"}]
+  - ["auto_br_f", "d", 1.0, {title: "Auto brightness correction factor"}]
 
 cdefs:
   SRCLK_GPIO: 19
