@@ -1,6 +1,6 @@
 author: 'Deomid "rojer" Ryabkov'
-description: LED clock firmware
-name: clock
+description: SLT-9001 LED clock firmware
+name: SLT9001
 version: 0.3.1
 platform: esp32
 manifest_version: 2020-01-29
