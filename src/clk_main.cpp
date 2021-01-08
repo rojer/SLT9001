@@ -52,7 +52,7 @@ static int CalcBrightness(float lux) {
       if (br_pct < 1) br_pct = 1;
       if (br_pct > 100) br_pct = 100;
     } else {
-      br_pct = 50;
+      br_pct = 1;
     }
   }
   BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
