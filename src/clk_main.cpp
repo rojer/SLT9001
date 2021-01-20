@@ -46,14 +46,10 @@ static struct mgos_bh1750 *s_bh = NULL;
 static int CalcBrightness(float lux) {
   int br_pct = mgos_sys_config_get_clock_br();
   if (br_pct < 0) return -1;
-  if (br_pct == 0) {
-    if (lux >= 0) {
-      br_pct = (int) (lux * mgos_sys_config_get_clock_auto_br_f());
-      if (br_pct < 1) br_pct = 1;
-      if (br_pct > 100) br_pct = 100;
-    } else {
-      br_pct = 1;
-    }
+  if (br_pct == 0 && lux >= 0) {
+    br_pct = (int) (lux * mgos_sys_config_get_clock_br_auto_f());
+    if (br_pct < 1) br_pct = 1;
+    if (br_pct > 100) br_pct = 100;
   }
   BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
   s_rl = (int) (mgos_sys_config_get_clock_rl() * e.sf);
@@ -75,10 +71,11 @@ static void UpdateDisplay() {
     digits[0] = DisplayController::kDigitValueEmpty;
   }
   float lux = -1;
-  if (s_bh != NULL) {
+  int br = mgos_sys_config_get_clock_br();
+  if (mgos_sys_config_get_clock_br_auto() && s_bh != NULL) {
     lux = mgos_bh1750_read_lux(s_bh, nullptr);
   }
-  int br = CalcBrightness(lux);
+  br = CalcBrightness(lux);
   SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_dl);
   LOG(LL_INFO, ("%s lux %.2f rl %d gl %d bl %d dl %d br %d", time_str, lux,
                 s_rl, s_gl, s_bl, s_dl, br));
@@ -90,7 +87,8 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
   char *s = NULL;
   int rl = -1, gl = -1, bl = -1, dl = -1, br = -2;
-  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br);
+  int8_t br_auto = -1;
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br, &br_auto);
   if (br != -2 && (br < -1 || br > 100)) {
     mg_rpc_send_errorf(ri, -1, "invalid %s", "br");
     return;
@@ -119,6 +117,9 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   if (br != -2) {
     mgos_sys_config_set_clock_br(br);
   }
+  if (br_auto != -1) {
+    mgos_sys_config_set_clock_br_auto((br_auto != 0));
+  }
   UpdateDisplay();
   mg_rpc_send_responsef(ri, nullptr);
   mgos_sys_config_save(&mgos_sys_config, false, nullptr);
@@ -140,15 +141,52 @@ static void ButtonUpCB(int ev, void *ev_data, void *userdata) {
   (void) ev;
 }
 
+static void PeekHandler(struct mg_rpc_request_info *ri, void *cb_arg,
+                            struct mg_rpc_frame_info *fi, struct mg_str args) {
+  uint32_t addr = 0;
+  json_scanf(args.p, args.len, ri->args_fmt, &addr);
+  if (addr == 0) {
+    mg_rpc_send_errorf(ri, -1, "%s is required", "addr");
+    return;
+  }
+  uint32_t val = *((uint32_t *) addr);
+  mg_rpc_send_responsef(ri, "{val: %u}", val);
+  (void) fi;
+  (void) cb_arg;
+}
+
+static void PokeHandler(struct mg_rpc_request_info *ri, void *cb_arg,
+                            struct mg_rpc_frame_info *fi, struct mg_str args) {
+  uint32_t addr = 0, val = 0;
+  json_scanf(args.p, args.len, ri->args_fmt, &addr, &val);
+  if (addr == 0) {
+    mg_rpc_send_errorf(ri, -1, "%s is required", "addr");
+    return;
+  }
+  *((uint32_t *) addr) = val;
+  mg_rpc_send_responsef(ri, nullptr);
+  (void) fi;
+  (void) cb_arg;
+}
+
 bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
-                     "{s: %Q, r: %d, g: %d, b: %d, d: %d, br: %d}",
+                     "{s: %Q, r: %d, g: %d, b: %d, d: %d, br: %d, br_auto: %B}",
                      SetColorHandler, nullptr);
+  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Peek",
+                     "{addr: %u}", PeekHandler, nullptr);
+  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Poke",
+                     "{addr: %u, val: %u}", PokeHandler, nullptr);
 
+#ifdef DVI_GPIO
   // Reset the light sensor.
   mgos_gpio_setup_output(DVI_GPIO, 0);
   mgos_msleep(1);
   mgos_gpio_write(DVI_GPIO, 1);
+#endif
+
+  mgos_gpio_set_mode(BUZZ_GPIO, MGOS_GPIO_MODE_OUTPUT_OD);
+  mgos_gpio_write(BUZZ_GPIO, 1);
 
   uint8_t bh1750_addr = mgos_bh1750_detect();
   if (bh1750_addr != 0) {

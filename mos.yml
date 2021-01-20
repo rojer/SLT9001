@@ -1,7 +1,7 @@
 author: 'Deomid "rojer" Ryabkov'
 description: SLT-9001 LED clock firmware
 name: SLT9001
-version: 0.3.1
+version: 0.5.0
 platform: esp32
 manifest_version: 2020-01-29
 
@@ -34,34 +34,67 @@ config_schema:
   - ["dns_sd.enable", true]
   - ["dns_sd.host_name", ""]
   - ["i2c.enable", true]
-  - ["i2c.scl_gpio", 33]
-  - ["i2c.sda_gpio", 32]
   - ["i2c.freq", 400000]
   - ["sntp.enable", true]
 
   - ["clock.rl", "i", 200, {title: "Red"}]
   - ["clock.gl", "i", 200, {title: "Green"}]
   - ["clock.bl", "i", 0, {title: "Blue"}]
-  - ["clock.br", "i", 0, {title: "Brightness, 0 = auto or 1 - 100"}]
-  - ["clock.auto_br_f", "d", 1.0, {title: "Auto brightness correction factor"}]
+  - ["clock.br", "i", 50, {title: "Brightness value if auto control is disabled"}]
+  - ["clock.br_auto", "b", true, {title: "Enable auto brightness control"}]
+  - ["clock.br_auto_f", "d", 3.0, {title: "Auto brightness lux to brightness level conversion factor"}]
   - ["clock.bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
   - ["clock.remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
 
-cdefs:
-  SRCLK_GPIO: 19
-  SER_GPIO: 18
-  QSER_GPIO: 22
-  RCLK_GPIO: 23
-  OE_R_GPIO: 21
-  OE_G_GPIO: 15
-  OE_B_GPIO: 5
-  # Buttons, active low
-  K1_GPIO: 39
-  K2_GPIO: 38
-  K3_GPIO: 37
-  # IR receiver
-  IR_GPIO: 36
-  # Reset pin of the light sensor
-  DVI_GPIO: 25
-  # GPIO to debug display refresh activity
-  # DISPLAY_DEBUG_GPIO: 16
+conds:
+  - when: build_vars.BOARD == "dev"
+    apply:
+      config_schema:
+        - ["i2c.scl_gpio", 33]
+        - ["i2c.sda_gpio", 32]
+      cdefs:
+        SRCLK_GPIO: 19
+        SER_GPIO: 18
+        QSER_GPIO: 22
+        RCLK_GPIO: 23
+        OE_R_GPIO: 21
+        OE_G_GPIO: 15
+        OE_B_GPIO: 5
+        # Buttons, active low
+        K1_GPIO: 39
+        K2_GPIO: 38
+        K3_GPIO: 37
+        # IR receiver
+        IR_GPIO: 36
+        # Buzzer
+        BUZZ_GPIO: 13
+        # Reset pin of the light sensor
+        DVI_GPIO: 25
+        # GPIO to debug display refresh activity
+        # DISPLAY_DEBUG_GPIO: 16
+
+  - when: build_vars.BOARD == "prod"
+    apply:
+      config_schema:
+        - ["i2c.scl_gpio", 22]
+        - ["i2c.sda_gpio", 23]
+      cdefs:
+        SRCLK_GPIO: 27
+        SER_GPIO: 12
+        QSER_GPIO: 32
+        RCLK_GPIO: 14
+        OE_R_GPIO: 33
+        OE_G_GPIO: 25
+        OE_B_GPIO: 26
+        # Buttons, active low
+        K1_GPIO: 
+        K2_GPIO: 
+        K3_GPIO: 
+        # IR receiver
+        IR_GPIO: 34
+        # Temperature sensor
+        NTC_GPIO: 35
+        # Buzzer
+        BUZZ_GPIO: 13
+        # Reset pin of the light sensor
+        # DVI_GPIO:
