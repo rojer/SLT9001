@@ -45,12 +45,11 @@ static struct mgos_bh1750 *s_bh = NULL;
 
 static int CalcBrightness(float lux) {
   int br_pct = mgos_sys_config_get_clock_br();
-  if (br_pct < 0) return -1;
-  if (br_pct == 0 && lux >= 0) {
+  if (mgos_sys_config_get_clock_br_auto() && lux >= 0) {
     br_pct = (int) (lux * mgos_sys_config_get_clock_br_auto_f());
-    if (br_pct < 1) br_pct = 1;
-    if (br_pct > 100) br_pct = 100;
   }
+  if (br_pct < 1) br_pct = 1;
+  if (br_pct > 100) br_pct = 100;
   BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
   s_rl = (int) (mgos_sys_config_get_clock_rl() * e.sf);
   s_gl = (int) (mgos_sys_config_get_clock_gl() * e.sf);
