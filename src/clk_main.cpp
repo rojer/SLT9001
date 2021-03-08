@@ -48,12 +48,18 @@ static int CalcBrightness(float lux) {
   if (mgos_sys_config_get_clock_br_auto() && lux >= 0) {
     br_pct = (int) (lux * mgos_sys_config_get_clock_br_auto_f());
   }
+  s_rl = (int) mgos_sys_config_get_clock_rl();
+  s_gl = (int) mgos_sys_config_get_clock_gl();
+  s_bl = (int) mgos_sys_config_get_clock_bl();
+  if (br_pct < 0) {
+    return br_pct;
+  }
   if (br_pct < 1) br_pct = 1;
   if (br_pct > 100) br_pct = 100;
   BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
-  s_rl = (int) (mgos_sys_config_get_clock_rl() * e.sf);
-  s_gl = (int) (mgos_sys_config_get_clock_gl() * e.sf);
-  s_bl = (int) (mgos_sys_config_get_clock_bl() * e.sf);
+  s_rl *= e.sf;
+  s_gl *= e.sf;
+  s_bl *= e.sf;
   s_dl = e.dl;
   return br_pct;
 }
