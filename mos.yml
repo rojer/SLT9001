@@ -28,6 +28,7 @@ libs:
   - origin: https://github.com/mongoose-os-libs/ota-http-server
   - origin: https://github.com/mongoose-os-libs/rpc-ws
   - origin: https://github.com/mongoose-os-libs/sntp
+  - origin: https://github.com/mongoose-os-libs/veml7700
   - origin: https://github.com/mongoose-os-libs/wifi
 
 config_schema:
@@ -76,8 +77,8 @@ conds:
   - when: build_vars.BOARD == "prod"
     apply:
       config_schema:
-        - ["i2c.scl_gpio", 22]
-        - ["i2c.sda_gpio", 23]
+        - ["i2c.scl_gpio", 23]
+        - ["i2c.sda_gpio", 22]
       cdefs:
         SRCLK_GPIO: 27
         SER_GPIO: 12

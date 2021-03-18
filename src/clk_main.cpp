@@ -10,6 +10,7 @@
 #include "mgos_bh1750.h"
 #include "mgos_rpc.h"
 #include "mgos_timers.hpp"
+#include "mgos_veml7700.h"
 
 #include "clk_br_curve.hpp"
 #include "clk_display_controller.hpp"
@@ -42,6 +43,7 @@ static uint16_t s_rl = 0, s_gl = 0, s_bl = 0, s_dl = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
+static struct mgos_veml7700 *s_veml = NULL;
 
 static int CalcBrightness(float lux) {
   int br_pct = mgos_sys_config_get_clock_br();
@@ -77,8 +79,12 @@ static void UpdateDisplay() {
   }
   float lux = -1;
   int br = mgos_sys_config_get_clock_br();
-  if (mgos_sys_config_get_clock_br_auto() && s_bh != NULL) {
-    lux = mgos_bh1750_read_lux(s_bh, nullptr);
+  if (mgos_sys_config_get_clock_br_auto()) {
+    if (s_bh != NULL) {
+      lux = mgos_bh1750_read_lux(s_bh, nullptr);
+    } else if (s_veml != NULL) {
+      lux = mgos_veml7700_read_lux(s_veml, true /* adjust */);
+    }
   }
   br = CalcBrightness(lux);
   SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_dl);
@@ -93,7 +99,8 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   char *s = NULL;
   int rl = -1, gl = -1, bl = -1, dl = -1, br = -2;
   int8_t br_auto = -1;
-  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br, &br_auto);
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br,
+             &br_auto);
   if (br != -2 && (br < -1 || br > 100)) {
     mg_rpc_send_errorf(ri, -1, "invalid %s", "br");
     return;
@@ -147,7 +154,7 @@ static void ButtonUpCB(int ev, void *ev_data, void *userdata) {
 }
 
 static void PeekHandler(struct mg_rpc_request_info *ri, void *cb_arg,
-                            struct mg_rpc_frame_info *fi, struct mg_str args) {
+                        struct mg_rpc_frame_info *fi, struct mg_str args) {
   uint32_t addr = 0;
   json_scanf(args.p, args.len, ri->args_fmt, &addr);
   if (addr == 0) {
@@ -161,7 +168,7 @@ static void PeekHandler(struct mg_rpc_request_info *ri, void *cb_arg,
 }
 
 static void PokeHandler(struct mg_rpc_request_info *ri, void *cb_arg,
-                            struct mg_rpc_frame_info *fi, struct mg_str args) {
+                        struct mg_rpc_frame_info *fi, struct mg_str args) {
   uint32_t addr = 0, val = 0;
   json_scanf(args.p, args.len, ri->args_fmt, &addr, &val);
   if (addr == 0) {
@@ -178,10 +185,10 @@ bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
                      "{s: %Q, r: %d, g: %d, b: %d, d: %d, br: %d, br_auto: %B}",
                      SetColorHandler, nullptr);
-  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Peek",
-                     "{addr: %u}", PeekHandler, nullptr);
-  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Poke",
-                     "{addr: %u, val: %u}", PokeHandler, nullptr);
+  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Peek", "{addr: %u}",
+                     PeekHandler, nullptr);
+  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Poke", "{addr: %u, val: %u}",
+                     PokeHandler, nullptr);
 
 #ifdef DVI_GPIO
   // Reset the light sensor.
@@ -193,12 +200,21 @@ bool InitApp() {
   mgos_gpio_set_mode(BUZZ_GPIO, MGOS_GPIO_MODE_OUTPUT_OD);
   mgos_gpio_write(BUZZ_GPIO, 1);
 
-  uint8_t bh1750_addr = mgos_bh1750_detect();
+  struct mgos_i2c *i2c_bus = mgos_i2c_get_bus(0);
+  uint8_t bh1750_addr = mgos_bh1750_detect_i2c(i2c_bus);
   if (bh1750_addr != 0) {
     LOG(LL_INFO, ("Found BH1750 sensor at %#x", bh1750_addr));
     s_bh = mgos_bh1750_create(bh1750_addr);
     mgos_bh1750_set_config(s_bh, MGOS_BH1750_MODE_CONT_HIGH_RES_2,
                            mgos_sys_config_get_clock_bh1750_mtime());
+  } else if (mgos_veml7700_detect(i2c_bus)) {
+    LOG(LL_INFO, ("Found VEML7700 sensor"));
+    s_veml = mgos_veml7700_create(i2c_bus);
+    mgos_veml7700_set_cfg(
+        s_veml, MGOS_VEML7700_CFG_ALS_IT_100 | MGOS_VEML7700_CFG_ALS_GAIN_1,
+        MGOS_VEML7700_PSM_0);
+  } else {
+    LOG(LL_ERROR, ("No light sensor found!"));
   }
 
   RemoteControlInit();
