@@ -88,9 +88,9 @@ conds:
         OE_G_GPIO: 25
         OE_B_GPIO: 26
         # Buttons, active low
-        K1_GPIO: 
-        K2_GPIO: 
-        K3_GPIO: 
+        K1_GPIO: 5
+        K2_GPIO: 18
+        K3_GPIO: 19
         # IR receiver
         IR_GPIO: 34
         # Temperature sensor

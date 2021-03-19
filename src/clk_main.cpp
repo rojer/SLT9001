@@ -137,7 +137,7 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   mgos_sys_config_save(&mgos_sys_config, false, nullptr);
 }
 
-static void ButtonDownCB(int ev, void *ev_data, void *userdata) {
+static void RemoteButtonDownCB(int ev, void *ev_data, void *userdata) {
   const RemoteControlButtonDownEventArg *arg =
       (RemoteControlButtonDownEventArg *) ev_data;
   LOG(LL_INFO, ("BTN DOWN: %d", (int) arg->btn));
@@ -145,12 +145,27 @@ static void ButtonDownCB(int ev, void *ev_data, void *userdata) {
   (void) ev;
 }
 
-static void ButtonUpCB(int ev, void *ev_data, void *userdata) {
+static void RemoteButtonUpCB(int ev, void *ev_data, void *userdata) {
   const RemoteControlButtonUpEventArg *arg =
       (RemoteControlButtonUpEventArg *) ev_data;
   LOG(LL_INFO, ("BTN UP: %d", (int) arg->btn));
   (void) userdata;
   (void) ev;
+}
+
+static void ButtonCB(int pin, void *arg) {
+  switch (pin) {
+    case K1_GPIO:
+      LOG(LL_INFO, ("K1 (SET)"));
+      break;
+    case K2_GPIO:
+      LOG(LL_INFO, ("K2 (UP)"));
+      break;
+    case K3_GPIO:
+      LOG(LL_INFO, ("K3 (DOWN)"));
+      break;
+  }
+  (void) arg;
 }
 
 static void PeekHandler(struct mg_rpc_request_info *ri, void *cb_arg,
@@ -219,9 +234,16 @@ bool InitApp() {
 
   RemoteControlInit();
   mgos_event_add_handler((int) RemoteControlButtonEvent::kButtonDown,
-                         ButtonDownCB, nullptr);
-  mgos_event_add_handler((int) RemoteControlButtonEvent::kButtonUp, ButtonUpCB,
-                         nullptr);
+                         RemoteButtonDownCB, nullptr);
+  mgos_event_add_handler((int) RemoteControlButtonEvent::kButtonUp,
+                         RemoteButtonUpCB, nullptr);
+
+  mgos_gpio_set_button_handler(K1_GPIO, MGOS_GPIO_PULL_UP,
+                               MGOS_GPIO_INT_EDGE_NEG, 20, ButtonCB, nullptr);
+  mgos_gpio_set_button_handler(K2_GPIO, MGOS_GPIO_PULL_UP,
+                               MGOS_GPIO_INT_EDGE_NEG, 20, ButtonCB, nullptr);
+  mgos_gpio_set_button_handler(K3_GPIO, MGOS_GPIO_PULL_UP,
+                               MGOS_GPIO_INT_EDGE_NEG, 20, ButtonCB, nullptr);
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
   return true;
