@@ -180,12 +180,14 @@ void DisplayController::Dump() {
                 r_.tot_len_, g_.len_, g_.tot_len_, b_.len_, b_.tot_len_));
 }
 
-void DisplayController::SetDigits(uint8_t digits[5], uint16_t rl, uint16_t gl,
-                                  uint16_t bl, uint16_t dl) {
+void DisplayController::SetDigits(uint8_t digits[5],
+    uint16_t rl, uint16_t gl, uint16_t bl,
+    uint16_t rl2, uint16_t gl2, uint16_t bl2,
+    uint16_t dl) {
   Clear();
   GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
   GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
-  GenDigitSeq(5, digits[2], 1, rl, gl, bl, dl);
+  GenDigitSeq(5, digits[2], 1, rl2, gl2, bl2, dl);
   GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
   GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
 }
@@ -225,7 +227,9 @@ IRAM void DisplayIntHandler() {
 DisplayController s_ctls[2] = {DisplayController(DisplayIntHandler),
                                DisplayController(DisplayIntHandler)};
 
-void SetDisplayDigits(uint8_t digits[5], uint16_t rl, uint16_t gl, uint16_t bl,
+void SetDisplayDigits(uint8_t digits[5],
+    uint16_t rl, uint16_t gl, uint16_t bl,
+    uint16_t rl2, uint16_t gl2, uint16_t bl2,
                       uint16_t dl) {
   s_switch_ctl = false;
   if (!s_started) {
@@ -237,7 +241,7 @@ void SetDisplayDigits(uint8_t digits[5], uint16_t rl, uint16_t gl, uint16_t bl,
   }
   int inactive_ctl = (s_active_ctl ^ 1);
   DisplayController *ctl = &s_ctls[inactive_ctl];
-  ctl->SetDigits(digits, rl, gl, bl, dl);
+  ctl->SetDigits(digits, rl, gl, bl, rl2, gl2, bl2, dl);
 
   if (!s_started) {
     s_active_ctl = inactive_ctl;

@@ -40,6 +40,7 @@ static const uint8_t s_syms[16] = {
 
 static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
 static uint16_t s_rl = 0, s_gl = 0, s_bl = 0, s_dl = 0;
+static uint16_t s_rl2 = 0, s_gl2 = 0, s_bl2 = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
@@ -87,7 +88,7 @@ static void UpdateDisplay() {
     }
   }
   br = CalcBrightness(lux);
-  SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_dl);
+  SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_rl2, s_gl2, s_bl2, s_dl);
   LOG(LL_INFO, ("%s lux %.2f rl %d gl %d bl %d dl %d br %d", time_str, lux,
                 s_rl, s_gl, s_bl, s_dl, br));
 }
@@ -98,8 +99,9 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
   char *s = NULL;
   int rl = -1, gl = -1, bl = -1, dl = -1, br = -2;
+  int rl2 = -1, gl2 = -1, bl2 = -1;
   int8_t br_auto = -1;
-  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &dl, &br,
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &rl2, &gl2, &bl2, &dl, &br,
              &br_auto);
   if (br != -2 && (br < -1 || br > 100)) {
     mg_rpc_send_errorf(ri, -1, "invalid %s", "br");
@@ -125,6 +127,15 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   }
   if (dl >= 0) {
     s_dl = dl;
+  }
+  if (rl2 >= 0) {
+    s_rl2 = rl2;
+  }
+  if (gl2 >= 0) {
+    s_gl2 = gl2;
+  }
+  if (bl2 >= 0) {
+    s_bl2 = bl2;
   }
   if (br != -2) {
     mgos_sys_config_set_clock_br(br);
@@ -198,7 +209,8 @@ static void PokeHandler(struct mg_rpc_request_info *ri, void *cb_arg,
 
 bool InitApp() {
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
-                     "{s: %Q, r: %d, g: %d, b: %d, d: %d, br: %d, br_auto: %B}",
+                     "{s: %Q, r: %d, g: %d, b: %d, r2: %d, g2: %d, b2: %d, d: %d, "
+                     "br: %d, br_auto: %B}",
                      SetColorHandler, nullptr);
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Peek", "{addr: %u}",
                      PeekHandler, nullptr);
@@ -246,6 +258,11 @@ bool InitApp() {
                                MGOS_GPIO_INT_EDGE_NEG, 20, ButtonCB, nullptr);
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
+
+  s_rl2 = mgos_sys_config_get_clock_rl();
+  s_gl2 = mgos_sys_config_get_clock_gl();
+  s_bl2 = mgos_sys_config_get_clock_bl();
+
   return true;
 }
 
