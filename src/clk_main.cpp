@@ -12,7 +12,6 @@
 #include "mgos_timers.hpp"
 #include "mgos_veml7700.h"
 
-#include "clk_br_curve.hpp"
 #include "clk_display_controller.hpp"
 #include "clk_remote_control.hpp"
 #include "clk_rmt_input_channel.hpp"
@@ -40,30 +39,36 @@ static const uint8_t s_syms[16] = {
 
 static char time_str[9] = {'1', '2', ':', '3', '4', ':', '5', '5'};
 static uint16_t s_rl = 0, s_gl = 0, s_bl = 0, s_dl = 0;
-static uint16_t s_rl2 = 0, s_gl2 = 0, s_bl2 = 0;
+static uint16_t s_rlc = 0, s_glc = 0, s_blc = 0;
 static bool s_show_time = true;
 
 static struct mgos_bh1750 *s_bh = NULL;
 static struct mgos_veml7700 *s_veml = NULL;
 
 static int CalcBrightness(float lux) {
-  int br_pct = mgos_sys_config_get_clock_br();
+  float br_pct = mgos_sys_config_get_clock_br();
   if (mgos_sys_config_get_clock_br_auto() && lux >= 0) {
-    br_pct = (int) (lux * mgos_sys_config_get_clock_br_auto_f());
+    br_pct = (lux * mgos_sys_config_get_clock_br_auto_f());
   }
   s_rl = (int) mgos_sys_config_get_clock_rl();
   s_gl = (int) mgos_sys_config_get_clock_gl();
   s_bl = (int) mgos_sys_config_get_clock_bl();
+  s_rlc = (int) mgos_sys_config_get_clock_rlc();
+  s_glc = (int) mgos_sys_config_get_clock_glc();
+  s_blc = (int) mgos_sys_config_get_clock_blc();
   if (br_pct < 0) {
     return br_pct;
   }
   if (br_pct < 1) br_pct = 1;
   if (br_pct > 100) br_pct = 100;
-  BrightnessCurveEntry e = GetBrightnessCurveEntry(br_pct);
-  s_rl *= e.sf;
-  s_gl *= e.sf;
-  s_bl *= e.sf;
-  s_dl = e.dl;
+  s_rl /= (101 - br_pct);
+  s_gl /= (101 - br_pct);
+  s_bl /= (101 - br_pct);
+  s_rlc /= (101 - br_pct);
+  s_glc /= (101 - br_pct);
+  s_blc /= (101 - br_pct);
+  s_dl = (mgos_sys_config_get_clock_br_auto_dl_max() -
+          (br_pct * mgos_sys_config_get_clock_br_auto_dl_f()));
   return br_pct;
 }
 
@@ -71,24 +76,38 @@ static void UpdateDisplay() {
   if (s_show_time) {
     mgos_strftime(time_str, sizeof(time_str), "%H:%M:%S", (int) mg_time());
   }
-  uint8_t s2 =
-      (time_str[7] % 2 != 0 ? DisplayController::kDigitValueEmpty : 0b10101111);
-  uint8_t digits[5] = {s_syms[time_str[0] - '0'], s_syms[time_str[1] - '0'], s2,
-                       s_syms[time_str[3] - '0'], s_syms[time_str[4] - '0']};
-  if (time_str[0] == '0') {
-    digits[0] = DisplayController::kDigitValueEmpty;
+  uint8_t tens_hours = (time_str[0] == '0' ? DisplayController::kDigitValueEmpty
+                                           : s_syms[time_str[0] - '0']);
+  uint8_t colon = DisplayController::kDigitValueEmpty;
+  switch (mgos_sys_config_get_clock_colon_mode()) {
+    case 0:
+      break;
+    case 1:
+      colon = DisplayController::kDigitValueColon;
+      break;
+    case 2:
+      if (time_str[7] % 2 == 0) colon = DisplayController::kDigitValueColon;
+      break;
+    case 3:
+      if (time_str[7] % 2 == 1) colon = DisplayController::kDigitValueColon;
+      break;
   }
+  const uint8_t digits[5] = {
+      tens_hours,
+      s_syms[time_str[1] - '0'],
+      colon,
+      s_syms[time_str[3] - '0'],
+      s_syms[time_str[4] - '0'],
+  };
   float lux = -1;
   int br = mgos_sys_config_get_clock_br();
-  if (mgos_sys_config_get_clock_br_auto()) {
-    if (s_bh != NULL) {
-      lux = mgos_bh1750_read_lux(s_bh, nullptr);
-    } else if (s_veml != NULL) {
-      lux = mgos_veml7700_read_lux(s_veml, true /* adjust */);
-    }
+  if (s_bh != NULL) {
+    lux = mgos_bh1750_read_lux(s_bh, nullptr);
+  } else if (s_veml != NULL) {
+    lux = mgos_veml7700_read_lux(s_veml, true /* adjust */);
   }
   br = CalcBrightness(lux);
-  SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_rl2, s_gl2, s_bl2, s_dl);
+  SetDisplayDigits(digits, s_rl, s_gl, s_bl, s_rlc, s_glc, s_blc, s_dl);
   LOG(LL_INFO, ("%s lux %.2f rl %d gl %d bl %d dl %d br %d", time_str, lux,
                 s_rl, s_gl, s_bl, s_dl, br));
 }
@@ -99,10 +118,10 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
                             struct mg_rpc_frame_info *fi, struct mg_str args) {
   char *s = NULL;
   int rl = -1, gl = -1, bl = -1, dl = -1, br = -2;
-  int rl2 = -1, gl2 = -1, bl2 = -1;
+  int rlc = -1, glc = -1, blc = -1;
   int8_t br_auto = -1;
-  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &rl2, &gl2, &bl2, &dl, &br,
-             &br_auto);
+  json_scanf(args.p, args.len, ri->args_fmt, &s, &rl, &gl, &bl, &rlc, &glc,
+             &blc, &dl, &br, &br_auto);
   if (br != -2 && (br < -1 || br > 100)) {
     mg_rpc_send_errorf(ri, -1, "invalid %s", "br");
     return;
@@ -128,14 +147,14 @@ static void SetColorHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   if (dl >= 0) {
     s_dl = dl;
   }
-  if (rl2 >= 0) {
-    s_rl2 = rl2;
+  if (rlc >= 0) {
+    mgos_sys_config_set_clock_rlc(rlc);
   }
-  if (gl2 >= 0) {
-    s_gl2 = gl2;
+  if (glc >= 0) {
+    mgos_sys_config_set_clock_glc(glc);
   }
-  if (bl2 >= 0) {
-    s_bl2 = bl2;
+  if (blc >= 0) {
+    mgos_sys_config_set_clock_blc(blc);
   }
   if (br != -2) {
     mgos_sys_config_set_clock_br(br);
@@ -207,11 +226,14 @@ static void PokeHandler(struct mg_rpc_request_info *ri, void *cb_arg,
   (void) cb_arg;
 }
 
-bool InitApp() {
-  mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.SetColor",
-                     "{s: %Q, r: %d, g: %d, b: %d, r2: %d, g2: %d, b2: %d, d: %d, "
-                     "br: %d, br_auto: %B}",
-                     SetColorHandler, nullptr);
+void InitApp(void *arg UNUSED_ARG) {
+  LOG(LL_INFO, ("Board: %s", CS_STRINGIFY_MACRO(BOARD)));
+
+  mg_rpc_add_handler(
+      mgos_rpc_get_global(), "Clock.SetColor",
+      "{s: %Q, r: %d, g: %d, b: %d, rc: %d, gc: %d, bc: %d, d: %d, "
+      "br: %d, br_auto: %B}",
+      SetColorHandler, nullptr);
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Peek", "{addr: %u}",
                      PeekHandler, nullptr);
   mg_rpc_add_handler(mgos_rpc_get_global(), "Clock.Poke", "{addr: %u, val: %u}",
@@ -259,17 +281,14 @@ bool InitApp() {
 
   s_tmr.Reset(1000, MGOS_TIMER_REPEAT);
 
-  s_rl2 = mgos_sys_config_get_clock_rl();
-  s_gl2 = mgos_sys_config_get_clock_gl();
-  s_bl2 = mgos_sys_config_get_clock_bl();
-
-  return true;
+  s_rlc = mgos_sys_config_get_clock_rl();
+  s_glc = mgos_sys_config_get_clock_gl();
+  s_blc = mgos_sys_config_get_clock_bl();
 }
 
 }  // namespace clk
 
-extern "C" {
-enum mgos_app_init_result mgos_app_init(void) {
-  return (clk::InitApp() ? MGOS_APP_INIT_SUCCESS : MGOS_APP_INIT_ERROR);
-}
+extern "C" enum mgos_app_init_result mgos_app_init(void) {
+  mgos_set_timer(5000, 0, clk::InitApp, nullptr);
+  return MGOS_APP_INIT_SUCCESS;
 }

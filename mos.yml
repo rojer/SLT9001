@@ -1,7 +1,7 @@
 author: 'Deomid "rojer" Ryabkov'
 description: SLT-9001 LED clock firmware
 name: SLT9001
-version: 0.5.1
+version: 0.6.0
 platform: esp32
 manifest_version: 2020-01-29
 
@@ -38,17 +38,24 @@ config_schema:
   - ["i2c.freq", 400000]
   - ["sntp.enable", true]
 
-  - ["clock.rl", "i", 200, {title: "Red"}]
-  - ["clock.gl", "i", 200, {title: "Green"}]
+  - ["clock.rl", "i", 0, {title: "Red"}]
+  - ["clock.gl", "i", 1500, {title: "Green"}]
   - ["clock.bl", "i", 0, {title: "Blue"}]
+  - ["clock.rlc", "i", 0, {title: "Red (colon)"}]
+  - ["clock.glc", "i", 1000, {title: "Green (colon)"}]
+  - ["clock.blc", "i", 0, {title: "Blue (colon)"}]
   - ["clock.br", "i", 50, {title: "Brightness value if auto control is disabled"}]
   - ["clock.br_auto", "b", true, {title: "Enable auto brightness control"}]
-  - ["clock.br_auto_f", "d", 3.0, {title: "Auto brightness lux to brightness level conversion factor"}]
+  - ["clock.br_auto_f", "f", 3.0, {title: "Auto brightness lux to brightness level conversion factor"}]
+  - ["clock.br_auto_dl_max", "f", 800.0, {title: ""}]
+  - ["clock.br_auto_dl_f", "f", 8.0, {title: ""}]
   - ["clock.bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
   - ["clock.remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
+  - ["clock.colon_mode", "i", 2, {title: "Mode for the colon digit: 0 - off, 1 - on, 2 - on for even seconds, 3 - on for odd seconds"}]
 
 cdefs:
   QMAP: 1
+  BOARD: ${build_vars.BOARD}
 
 conds:
   - when: build_vars.BOARD == "dev"
@@ -77,7 +84,7 @@ conds:
         # GPIO to debug display refresh activity
         # DISPLAY_DEBUG_GPIO: 16
 
-  - when: build_vars.BOARD == "prod"
+  - when: build_vars.BOARD == "dev2"
     apply:
       config_schema:
         - ["i2c.scl_gpio", 23]
@@ -103,7 +110,7 @@ conds:
         # Reset pin of the light sensor
         # DVI_GPIO:
 
-  - when: build_vars.BOARD == "prod2"
+  - when: build_vars.BOARD == "prod"
     apply:
       config_schema:
         - ["i2c.scl_gpio", 16]

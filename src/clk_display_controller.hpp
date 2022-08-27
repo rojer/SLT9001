@@ -18,12 +18,11 @@ class DisplayController {
 
   void Init();
 
-  static constexpr uint8_t kDigitValueEmpty = 0xff;
+  static constexpr uint8_t kDigitValueEmpty = 0b11111111;
+  static constexpr uint8_t kDigitValueColon = 0b10101111;
 
-  void SetDigits(uint8_t digits[5],
-                 uint16_t rl, uint16_t gl, uint16_t bl,
-                 uint16_t rl2, uint16_t gl2, uint16_t bl2,
-                 uint16_t dl);
+  void SetDigits(const uint8_t digits[5], uint16_t rl, uint16_t gl, uint16_t bl,
+                 uint16_t rlc, uint16_t glc, uint16_t blc, uint16_t dl);
 
   // Data generation functions.
   void Clear();
@@ -46,9 +45,8 @@ class DisplayController {
   void (*int_handler_)();
 };
 
-void SetDisplayDigits(uint8_t digits[5],
-    uint16_t rl, uint16_t gl, uint16_t bl,
-    uint16_t rl2, uint16_t gl2, uint16_t bl2,
+void SetDisplayDigits(const uint8_t digits[5], uint16_t rl, uint16_t gl,
+                      uint16_t bl, uint16_t rlc, uint16_t glc, uint16_t blc,
                       uint16_t dl);
 
 }  // namespace clk
