@@ -47,6 +47,9 @@ config_schema:
   - ["clock.bh1750_mtime", "i", 100, {title: "Measurement time for the BH1750"}]
   - ["clock.remote_button_map", "s", "", {title: "Map of remote button code -> button id"}]
 
+cdefs:
+  QMAP: 1
+
 conds:
   - when: build_vars.BOARD == "dev"
     apply:
@@ -99,3 +102,29 @@ conds:
         BUZZ_GPIO: 13
         # Reset pin of the light sensor
         # DVI_GPIO:
+
+  - when: build_vars.BOARD == "prod2"
+    apply:
+      config_schema:
+        - ["i2c.scl_gpio", 16]
+        - ["i2c.sda_gpio", 17]
+      cdefs:
+        SRCLK_GPIO: 25
+        SER_GPIO: 19
+        QSER_GPIO: 32
+        RCLK_GPIO: 33
+        OE_R_GPIO: 12
+        OE_G_GPIO: 27
+        OE_B_GPIO: 26
+        # Buttons, active low
+        K1_GPIO: 21
+        K2_GPIO: 14
+        K3_GPIO: 18
+        # IR receiver
+        IR_GPIO: 34
+        # Temperature sensor
+        NTC_GPIO: 35
+        # Buzzer
+        BUZZ_GPIO: 13
+        # Q mapping
+        QMAP: 2

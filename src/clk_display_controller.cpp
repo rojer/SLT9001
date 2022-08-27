@@ -185,11 +185,21 @@ void DisplayController::SetDigits(uint8_t digits[5],
     uint16_t rl2, uint16_t gl2, uint16_t bl2,
     uint16_t dl) {
   Clear();
+#if QMAP == 1
   GenDigitSeq(1, digits[0], 1, rl, gl, bl, dl);
   GenDigitSeq(2, digits[1], 1, rl, gl, bl, dl);
   GenDigitSeq(5, digits[2], 1, rl2, gl2, bl2, dl);
   GenDigitSeq(3, digits[3], 1, rl, gl, bl, dl);
   GenDigitSeq(4, digits[4], 1, rl, gl, bl, dl);
+#elif QMAP == 2
+  GenDigitSeq(4, digits[0], 1, rl, gl, bl, dl);
+  GenDigitSeq(3, digits[1], 1, rl, gl, bl, dl);
+  GenDigitSeq(0, digits[2], 1, rl2, gl2, bl2, dl);
+  GenDigitSeq(2, digits[3], 1, rl, gl, bl, dl);
+  GenDigitSeq(1, digits[4], 1, rl, gl, bl, dl);
+#else
+#error "Q mapping not set"
+#endif
 }
 
 // static
